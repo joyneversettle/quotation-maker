@@ -149,15 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
-
-            {/* Desktop collapse toggle button */}
-            <button
-              onClick={onToggle}
-              className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
-              title={isOpen ? 'Collapse Sidebar' : 'Expand Sidebar'}
-            >
-              {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-            </button>
+            
           </div>
 
           {/* New Quotation Quick Action Button */}
