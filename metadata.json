@@ -1,0 +1,6 @@
+{
+  "name": "Quotation Maker",
+  "description": "Professional quotation builder for hotels and resorts with live preview, custom HTML templates, email-safe formatting, and PDF export.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
