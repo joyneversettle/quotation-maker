@@ -137,7 +137,16 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
       onShowToast('success', 'PDF downloaded successfully.');
     } catch (error) {
       console.error('PDF generation failed:', error);
-      onShowToast('error', 'PDF generation failed. Please try again.');
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : String(error);
+
+      onShowToast(
+        'error',
+        `PDF generation failed: ${errorMessage}`
+      );
     }
   };
 
