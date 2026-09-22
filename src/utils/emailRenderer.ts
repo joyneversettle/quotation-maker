@@ -206,22 +206,23 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
 
     /* Mobile Responsive Fix - preserve existing quotation design */
     @media only screen and (max-width: 520px) {
+      /* Equal mobile page margins and identical card widths */
       .email-wrapper {
         width: 100% !important;
         max-width: 100% !important;
-        padding: 6px 6px !important;
+        padding: 6px !important;
         margin: 0 auto !important;
+        box-sizing: border-box !important;
       }
 
       .email-wrapper > tbody > tr > td {
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+        padding: 0 !important;
       }
 
       .email-card {
         width: 100% !important;
         max-width: 100% !important;
-        padding: 12px 10px !important;
+        padding: 10px !important;
         margin: 0 auto !important;
         box-sizing: border-box !important;
       }
@@ -229,154 +230,129 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
       .full-mobile-card,
       .full-mobile-card > tbody,
       .full-mobile-card > tbody > tr,
-      .full-mobile-card > tbody > tr > td {
+      .full-mobile-card > tbody > tr > td,
+      .guest-stay-card,
+      .extra-services-table {
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
       }
 
-      .full-mobile-card {
-        min-width: 100% !important;
+      .full-mobile-card,
+      .extra-services-table {
         table-layout: fixed !important;
       }
 
-      .guest-stay-card {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-height: 178px !important;
-        box-sizing: border-box !important;
-      }
-
-      .header-col-left,
-      .header-col-right {
-        box-sizing: border-box !important;
-      }
-
+      /* Header stays compact and aligned side-by-side */
       .header-col-left {
-        display: block !important;
-        width: 100% !important;
-        padding-right: 0 !important;
-        margin-bottom: 8px !important;
+        display: table-cell !important;
+        width: 62% !important;
+        padding-right: 6px !important;
+        vertical-align: top !important;
+        box-sizing: border-box !important;
       }
 
       .header-col-right {
-        display: block !important;
-        width: 100% !important;
+        display: table-cell !important;
+        width: 38% !important;
         min-width: 0 !important;
-        max-width: 100% !important;
-        text-align: left !important;
+        max-width: 38% !important;
+        padding: 0 !important;
+        text-align: right !important;
+        vertical-align: top !important;
+        box-sizing: border-box !important;
       }
 
       .hotel-header-title {
         display: block !important;
-        font-size: 10.5px !important;
-        line-height: 1 !important;
+        font-size: 11px !important;
+        line-height: 1.05 !important;
         letter-spacing: 0 !important;
         white-space: nowrap !important;
         overflow: hidden !important;
-        text-overflow: clip !important;
       }
 
       .header-col-left > div:nth-of-type(1) {
-        font-size: 8px !important;
-        line-height: 1.15 !important;
-        letter-spacing: 0.25px !important;
+        font-size: 7px !important;
+        line-height: 1.1 !important;
+        letter-spacing: 0.2px !important;
         white-space: nowrap !important;
+        overflow: hidden !important;
       }
 
       .header-col-left > div:nth-of-type(2) {
-        font-size: 8.5px !important;
-        line-height: 1.25 !important;
-        margin-top: 4px !important;
+        font-size: 7.5px !important;
+        line-height: 1.2 !important;
+        margin-top: 3px !important;
       }
 
       .header-col-left > div {
-        overflow-wrap: break-word !important;
+        overflow-wrap: normal !important;
         word-break: normal !important;
       }
 
       .meta-box-table {
         width: 100% !important;
         max-width: 100% !important;
-        text-align: left !important;
-        padding: 6px 8px !important;
-      }
-
-      .meta-box-table div {
-        line-height: 1.15 !important;
+        padding: 5px 5px !important;
+        text-align: center !important;
+        box-sizing: border-box !important;
       }
 
       .meta-box-td {
-        text-align: left !important;
-      }
-
-      .grid-col {
-        display: block !important;
-        width: 100% !important;
-        padding: 0 !important;
-        margin: 0 0 10px 0 !important;
-        box-sizing: border-box !important;
-      }
-
-      .grid-col > table {
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-      }
-
-      .payment-col-bank {
-        display: block !important;
-        width: 100% !important;
-        padding-right: 0 !important;
-        margin-bottom: 10px !important;
-        box-sizing: border-box !important;
-      }
-
-      .payment-col-qr {
-        display: block !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        padding-left: 0 !important;
         text-align: center !important;
-        margin: 0 auto !important;
+      }
+
+      .meta-box-table div {
+        line-height: 1.05 !important;
+      }
+
+      /* Prepared For + Stay Details are equal cards */
+      .grid-col {
+        display: table-cell !important;
+        width: 50% !important;
+        padding: 0 3px !important;
+        margin: 0 !important;
+        vertical-align: top !important;
         box-sizing: border-box !important;
       }
 
-      .payment-col-qr > table {
-        width: 140px !important;
-        max-width: 140px !important;
-        margin: 0 auto !important;
-      }
-
-      .footer-col-left,
-      .footer-col-right {
-        display: block !important;
-        width: 100% !important;
+      .grid-col:first-child {
         padding-left: 0 !important;
+      }
+
+      .grid-col:last-child {
         padding-right: 0 !important;
-        margin: 0 0 10px 0 !important;
+      }
+
+      .guest-stay-card {
+        min-height: 170px !important;
+        height: 170px !important;
+        padding: 7px !important;
         box-sizing: border-box !important;
       }
 
-      .footer-col-right {
-        text-align: left !important;
+      .guest-stay-card table {
+        width: 100% !important;
+        table-layout: fixed !important;
       }
 
-      .footer-col-right > div:first-child {
-        font-size: 8px !important;
-        line-height: 1.2 !important;
-        margin-bottom: 3px !important;
-        text-align: left !important;
-      }
-
-      .footer-col-right > div:last-child {
-        font-size: 7.5px !important;
+      .guest-stay-card td {
+        font-size: 8.5px !important;
         line-height: 1.25 !important;
-        text-align: left !important;
-        overflow-wrap: break-word !important;
-        word-break: normal !important;
       }
 
+      .guest-stay-card td:first-child {
+        white-space: nowrap !important;
+      }
+
+      .guest-stay-card td:nth-child(2) {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: clip !important;
+      }
+
+      /* Accommodation table remains one compact row */
       .tariff-table,
       .extra-services-table {
         display: table !important;
@@ -384,49 +360,120 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         min-width: 100% !important;
         max-width: 100% !important;
         table-layout: fixed !important;
-        box-sizing: border-box !important;
       }
 
+      .tariff-table th,
+      .tariff-table td {
+        font-size: 8px !important;
+        padding: 5px 2px !important;
+        line-height: 1.15 !important;
+        box-sizing: border-box !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: clip !important;
+      }
+
+      .tariff-table th {
+        font-size: 7.5px !important;
+      }
+
+      /* All financial/payment cards occupy exactly the same width */
       .full-mobile-card {
         display: table !important;
         width: 100% !important;
         min-width: 100% !important;
         max-width: 100% !important;
         table-layout: fixed !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
       }
 
       .full-mobile-card td {
+        box-sizing: border-box !important;
         max-width: 100% !important;
-        box-sizing: border-box !important;
       }
 
-      .tariff-table th,
-      .tariff-table td {
+      /* Financial rows stay label/value on one line */
+      .full-mobile-card table {
+        width: 100% !important;
+        table-layout: fixed !important;
+      }
+
+      .full-mobile-card table td {
         font-size: 9px !important;
-        padding: 6px 2px !important;
-        line-height: 1.25 !important;
-        box-sizing: border-box !important;
-        overflow-wrap: normal !important;
-        word-break: normal !important;
+        line-height: 1.3 !important;
       }
 
-      .tariff-table th {
+      /* Payment section: bank text remains compact, QR stays centered */
+      .payment-col-bank {
+        display: table-cell !important;
+        width: 68% !important;
+        padding-right: 5px !important;
+        vertical-align: top !important;
+        box-sizing: border-box !important;
+      }
+
+      .payment-col-qr {
+        display: table-cell !important;
+        width: 32% !important;
+        max-width: 32% !important;
+        padding: 0 !important;
+        text-align: center !important;
+        vertical-align: top !important;
+        box-sizing: border-box !important;
+      }
+
+      .payment-col-bank > div {
+        font-size: 8px !important;
+        line-height: 1.35 !important;
         white-space: nowrap !important;
       }
 
+      .payment-col-qr > table {
+        width: 105px !important;
+        max-width: 105px !important;
+        margin: 0 auto !important;
+      }
+
+      /* Separate note card */
       .mobile-note-card {
         width: 100% !important;
         max-width: 100% !important;
+        margin: 5px 0 0 0 !important;
+        padding: 6px 7px !important;
         box-sizing: border-box !important;
-        margin: 8px 0 0 0 !important;
-        padding: 7px 8px !important;
-        border: 1px solid #CBD5E1 !important;
-        border-radius: 5px !important;
-        background-color: #FFFFFF !important;
-        font-size: 9px !important;
-        line-height: 1.35 !important;
-        overflow-wrap: break-word !important;
-        word-break: normal !important;
+        font-size: 8px !important;
+        line-height: 1.25 !important;
+      }
+
+      /* Footer: compact, clean and aligned */
+      .footer-col-left {
+        display: table-cell !important;
+        width: 45% !important;
+        padding-right: 5px !important;
+        vertical-align: bottom !important;
+      }
+
+      .footer-col-right {
+        display: table-cell !important;
+        width: 55% !important;
+        padding-left: 5px !important;
+        vertical-align: bottom !important;
+        text-align: right !important;
+      }
+
+      .footer-col-right > div:first-child {
+        font-size: 8px !important;
+        line-height: 1.15 !important;
+        margin-bottom: 2px !important;
+        text-align: right !important;
+      }
+
+      .footer-col-right > div:last-child {
+        font-size: 7px !important;
+        line-height: 1.2 !important;
+        text-align: right !important;
+        white-space: nowrap !important;
       }
     }
   </style>
@@ -497,7 +544,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                           <td style="border-bottom: 1px solid ${borderGray}; padding-bottom: 4px;">
                             <table width="100%" cellpadding="0" cellspacing="0" border="0">
                               <tr>
-                                <td style="font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">PREPARED FOR</td>
+                                <td style="font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap;">PREPARED FOR</td>
                                 <td style="text-align: right; padding-left: 6px; white-space: nowrap;">
                                   <span style="background-color: #E2E8F0; color: ${textBlack}; font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">${data.guest.guestType}</span>
                                 </td>
