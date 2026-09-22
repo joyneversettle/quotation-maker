@@ -508,7 +508,16 @@ export default function App() {
       showToast('success', 'PDF downloaded successfully.');
     } catch (error) {
       console.error('PDF generation failed:', error);
-      showToast('error', 'PDF generation failed. Please try again.');
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : String(error);
+
+      showToast(
+        'error',
+        `PDF generation failed: ${errorMessage}`
+      );
     }
   }, [templates, selectedTemplateId, quotationData, showToast]);
 
