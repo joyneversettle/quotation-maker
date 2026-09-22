@@ -1,351 +1,307 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
-const PDF_WIDTH_PX = 794;
+const A4_WIDTH_MM = 210;
+const A4_HEIGHT_MM = 297;
+const MARGIN_MM = 5;
+const USABLE_WIDTH_MM = A4_WIDTH_MM - MARGIN_MM * 2;
+const USABLE_HEIGHT_MM = A4_HEIGHT_MM - MARGIN_MM * 2;
 
-function convertCssColors(value: string): string {
-  if (!value || !/(oklch|oklab|color\()/i.test(value)) {
-    return value;
-  }
+// Fixed desktop/A4 CSS viewport. This prevents mobile/desktop media queries
+// from changing the quotation layout during PDF generation.
+const RENDER_WIDTH_PX = 794;
+const MIN_SINGLE_PAGE_SCALE = 0.72;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
+function waitForImages(doc: Document): Promise<void> {
+  const images = Array.from(doc.images);
+  return Promise.all(
+    images.map((img) => {
+      if (img.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        const done = () => {
+          img.removeEventListener('load', done);
+          img.removeEventListener('error', done);
+          resolve();
+        };
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+      });
+    }),
+  ).then(() => undefined);
+}
 
-  const context = canvas.getContext("2d");
+async function waitForIframeReady(iframe: HTMLIFrameElement): Promise<Document> {
+  const doc = iframe.contentDocument;
+  if (!doc) throw new Error('Unable to create PDF rendering document.');
 
-  if (!context) {
-    return value
-      .replace(/oklch\([^)]*\)/gi, "#000000")
-      .replace(/oklab\([^)]*\)/gi, "#000000")
-      .replace(/color\([^)]*\)/gi, "#000000");
-  }
-
-  const replaceColor = (match: string): string => {
+  if (doc.fonts?.ready) {
     try {
-      context.fillStyle = "#000000";
-      context.fillStyle = match;
-      return context.fillStyle;
+      await doc.fonts.ready;
     } catch {
-      return "#000000";
+      // Continue even if a browser cannot resolve one optional font.
     }
-  };
+  }
 
-  return value
-    .replace(/oklch\([^)]*\)/gi, replaceColor)
-    .replace(/oklab\([^)]*\)/gi, replaceColor)
-    .replace(/color\([^)]*\)/gi, replaceColor);
+  await waitForImages(doc);
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+  return doc;
 }
 
-function copyComputedStyles(
-  source: Element,
-  target: Element
-): void {
-  const computed = window.getComputedStyle(source);
-  const targetStyle = (target as HTMLElement).style;
+function copyStylesToIframe(iframeDoc: Document) {
+  const head = iframeDoc.head;
+  const base = iframeDoc.createElement('base');
+  base.href = document.baseURI;
+  head.appendChild(base);
 
-  for (let index = 0; index < computed.length; index += 1) {
-    const property = computed[index];
+  document.head.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
+    head.appendChild(node.cloneNode(true));
+  });
 
-    if (!property || property.startsWith("--")) {
-      continue;
+  const printStyle = iframeDoc.createElement('style');
+  printStyle.textContent = `
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      width: ${RENDER_WIDTH_PX}px !important;
+      min-width: ${RENDER_WIDTH_PX}px !important;
+      max-width: ${RENDER_WIDTH_PX}px !important;
+      background: #ffffff !important;
+      overflow: visible !important;
     }
 
-    let value = computed.getPropertyValue(property);
-
-    if (!value) {
-      continue;
+    #quotation-pdf-content {
+      width: ${RENDER_WIDTH_PX}px !important;
+      min-width: ${RENDER_WIDTH_PX}px !important;
+      max-width: ${RENDER_WIDTH_PX}px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      box-sizing: border-box !important;
+      overflow: visible !important;
     }
 
-    value = convertCssColors(value);
-
-    try {
-      targetStyle.setProperty(
-        property,
-        value,
-        computed.getPropertyPriority(property)
-      );
-    } catch {
-      // Ignore properties that cannot be applied inline.
+    #quotation-pdf-content .quotation-template {
+      width: 100% !important;
+      max-width: ${RENDER_WIDTH_PX}px !important;
+      margin: 0 !important;
+      box-sizing: border-box !important;
     }
-  }
 
-  // Remove utility classes so no Tailwind/application stylesheet is needed.
-  target.removeAttribute("class");
-
-  const sourceChildren = Array.from(source.children);
-  const targetChildren = Array.from(target.children);
-
-  for (
-    let index = 0;
-    index < sourceChildren.length;
-    index += 1
-  ) {
-    const sourceChild = sourceChildren[index];
-    const targetChild = targetChildren[index];
-
-    if (targetChild) {
-      copyComputedStyles(sourceChild, targetChild);
+    #quotation-pdf-content * {
+      box-sizing: border-box !important;
     }
-  }
+
+    #quotation-pdf-content table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+    }
+
+    #quotation-pdf-content th,
+    #quotation-pdf-content td {
+      vertical-align: middle !important;
+      line-height: 1.2 !important;
+    }
+
+    #quotation-pdf-content img {
+      max-width: 100% !important;
+    }
+  `;
+  head.appendChild(printStyle);
 }
 
-function prepareIsolatedDocument(
-  iframe: HTMLIFrameElement,
-  html: string
-): HTMLElement {
-  const iframeDocument = iframe.contentDocument;
-
-  if (!iframeDocument) {
-    throw new Error("Unable to create PDF rendering document.");
-  }
-
-  iframeDocument.open();
-  iframeDocument.write(
-    `<!doctype html><html><head><meta charset="UTF-8"><base href="${document.baseURI}"></head><body></body></html>`
-  );
-  iframeDocument.close();
-
-  const source = document.createElement("div");
-
-  source.style.position = "fixed";
-  source.style.left = "0";
-  source.style.top = "0";
-  source.style.width = `${PDF_WIDTH_PX}px`;
-  source.style.maxWidth = `${PDF_WIDTH_PX}px`;
-  source.style.margin = "0";
-  source.style.padding = "0";
-  source.style.background = "#ffffff";
-  source.style.overflow = "visible";
-  source.innerHTML = html;
-
-  document.body.appendChild(source);
-
-  const isolatedRoot = iframeDocument.createElement("div");
-
-  isolatedRoot.style.width = `${PDF_WIDTH_PX}px`;
-  isolatedRoot.style.maxWidth = `${PDF_WIDTH_PX}px`;
-  isolatedRoot.style.margin = "0";
-  isolatedRoot.style.padding = "0";
-  isolatedRoot.style.background = "#ffffff";
-  isolatedRoot.style.color = "#000000";
-  isolatedRoot.innerHTML = source.innerHTML;
-
-  iframeDocument.body.style.margin = "0";
-  iframeDocument.body.style.padding = "0";
-  iframeDocument.body.style.width = `${PDF_WIDTH_PX}px`;
-  iframeDocument.body.style.background = "#ffffff";
-
-  iframeDocument.body.appendChild(isolatedRoot);
-
-  // Browser computes Tailwind/quotation styles here while the real app CSS
-  // is still available. Those computed styles are then copied as inline CSS.
-  copyComputedStyles(source, isolatedRoot);
-
-  source.remove();
-
-  return isolatedRoot;
-}
-
-export async function generateQuotationPdf(
-  html: string,
-  fileName = "quotation.pdf"
-): Promise<void> {
-  if (!html || !html.trim()) {
-    throw new Error("Quotation HTML is empty.");
-  }
-
-  const iframe = document.createElement("iframe");
-
-  iframe.style.position = "fixed";
-  iframe.style.left = "0";
-  iframe.style.top = "0";
-  iframe.style.width = `${PDF_WIDTH_PX}px`;
-  iframe.style.height = "12000px";
-  iframe.style.border = "0";
-  iframe.style.margin = "0";
-  iframe.style.padding = "0";
-  iframe.style.background = "#ffffff";
-  iframe.style.zIndex = "-2147483647";
-  iframe.setAttribute("aria-hidden", "true");
+function makeRenderIframe(html: string): HTMLIFrameElement {
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.position = 'fixed';
+  iframe.style.left = '-10000px';
+  iframe.style.top = '0';
+  iframe.style.width = `${RENDER_WIDTH_PX}px`;
+  iframe.style.height = '1200px';
+  iframe.style.border = '0';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.zIndex = '-1';
 
   document.body.appendChild(iframe);
 
+  const iframeDoc = iframe.contentDocument;
+  if (!iframeDoc) {
+    iframe.remove();
+    throw new Error('Unable to access PDF rendering frame.');
+  }
+
+  iframeDoc.open();
+  iframeDoc.write(`<!doctype html><html><head><meta name="viewport" content="width=${RENDER_WIDTH_PX}, initial-scale=1"></head><body><div id="quotation-pdf-content">${html}</div></body></html>`);
+  iframeDoc.close();
+
+  copyStylesToIframe(iframeDoc);
+  return iframe;
+}
+
+function createCanvasSlice(source: HTMLCanvasElement, y: number, height: number) {
+  const slice = document.createElement('canvas');
+  slice.width = source.width;
+  slice.height = Math.max(1, Math.min(height, source.height - y));
+
+  const context = slice.getContext('2d');
+  if (!context) throw new Error('Unable to create PDF page canvas.');
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, slice.width, slice.height);
+  context.drawImage(
+    source,
+    0,
+    y,
+    source.width,
+    slice.height,
+    0,
+    0,
+    slice.width,
+    slice.height,
+  );
+
+  return slice;
+}
+
+
+function buildPageRanges(
+  canvas: HTMLCanvasElement,
+  templateRoot: HTMLElement,
+  canvasScale: number,
+): Array<{ start: number; end: number }> {
+  const maxPageHeight = Math.floor(canvas.width * (USABLE_HEIGHT_MM / USABLE_WIDTH_MM));
+  const contentHeight = canvas.height;
+
+  if (contentHeight <= maxPageHeight) {
+    return [{ start: 0, end: contentHeight }];
+  }
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  let start = 0;
+  const children = Array.from(templateRoot.children) as HTMLElement[];
+
+  for (const child of children) {
+    const childTop = Math.round(child.offsetTop * canvasScale);
+    const childBottom = Math.round((child.offsetTop + child.offsetHeight) * canvasScale);
+
+    if (childBottom - start <= maxPageHeight) {
+      continue;
+    }
+
+    if (childTop > start) {
+      ranges.push({ start, end: childTop });
+      start = childTop;
+    }
+
+    if (childBottom - start > maxPageHeight) {
+      // A single section is taller than a page. Split it only as a last resort.
+      const forcedEnd = Math.min(start + maxPageHeight, contentHeight);
+      ranges.push({ start, end: forcedEnd });
+      start = forcedEnd;
+    }
+  }
+
+  if (start < contentHeight) {
+    ranges.push({ start, end: contentHeight });
+  }
+
+  return ranges.length ? ranges : [{ start: 0, end: contentHeight }];
+}
+
+export async function generateQuotationPdf(html: string, quotationNumber: string): Promise<void> {
+  if (!html) throw new Error('Quotation content is empty.');
+
+  const iframe = makeRenderIframe(html);
+
   try {
-    const root = prepareIsolatedDocument(iframe, html);
+    const iframeDoc = await waitForIframeReady(iframe);
+    const target = iframeDoc.getElementById('quotation-pdf-content');
+    const templateRoot = target?.querySelector('.quotation-template') as HTMLElement | null;
 
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resolve);
-      });
-    });
+    if (!target || !templateRoot) {
+      throw new Error('Quotation template could not be prepared for PDF.');
+    }
 
-    const images = Array.from(
-      root.querySelectorAll<HTMLImageElement>("img")
-    );
+    iframe.style.height = `${Math.max(1200, target.scrollHeight + 50)}px`;
 
-    await Promise.all(
-      images.map(
-        (img) =>
-          new Promise<void>((resolve) => {
-            if (img.complete) {
-              resolve();
-              return;
-            }
-
-            const finish = () => resolve();
-
-            img.addEventListener("load", finish, { once: true });
-            img.addEventListener("error", finish, { once: true });
-
-            window.setTimeout(finish, 10000);
-          })
-      )
-    );
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resolve);
-      });
-    });
-
-    /*
-     * This html2canvas call runs inside a completely isolated iframe.
-     * There are no Tailwind stylesheets and no oklch() rules available
-     * for html2canvas to parse.
-     */
-    const canvas = await html2canvas(root, {
-      scale: 2,
-      backgroundColor: "#ffffff",
+    const canvas = await html2canvas(target, {
+      backgroundColor: '#ffffff',
       useCORS: true,
       allowTaint: false,
       logging: false,
-      imageTimeout: 10000,
-      width: PDF_WIDTH_PX,
-      windowWidth: PDF_WIDTH_PX,
+      scale: 2,
+      width: RENDER_WIDTH_PX,
+      height: target.scrollHeight,
+      windowWidth: RENDER_WIDTH_PX,
+      windowHeight: Math.max(RENDER_WIDTH_PX, target.scrollHeight),
       scrollX: 0,
       scrollY: 0,
     });
 
-    if (!canvas.width || !canvas.height) {
-      throw new Error("Quotation could not be rendered.");
-    }
-
     const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
       compress: true,
     });
 
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const margin = 5;
+    const maxPageCanvasHeight = canvas.width * (USABLE_HEIGHT_MM / USABLE_WIDTH_MM);
+    const fullHeightScale = maxPageCanvasHeight / canvas.height;
 
-    const usableWidth = pageWidth - margin * 2;
-    const usableHeight = pageHeight - margin * 2;
-
-    // Fit the whole quotation on one A4 page whenever possible.
-    const fitScale = Math.min(
-      usableWidth / canvas.width,
-      usableHeight / canvas.height
-    );
-
-    const fittedWidth = canvas.width * fitScale;
-    const fittedHeight = canvas.height * fitScale;
-
-    if (fittedHeight <= usableHeight) {
-      const x = margin + (usableWidth - fittedWidth) / 2;
+    // Always use the full printable A4 width.
+    // The previous implementation scaled width down together with height,
+    // which created visible left/right gaps in the PDF.
+    if (fullHeightScale >= 1) {
+      const imageData = canvas.toDataURL('image/jpeg', 0.98);
+      const renderWidth = USABLE_WIDTH_MM;
+      const renderHeight = USABLE_WIDTH_MM * (canvas.height / canvas.width);
 
       pdf.addImage(
-        canvas,
-        "PNG",
-        x,
-        margin,
-        fittedWidth,
-        fittedHeight,
+        imageData,
+        'JPEG',
+        MARGIN_MM,
+        MARGIN_MM,
+        renderWidth,
+        renderHeight,
         undefined,
-        "FAST"
+        'FAST',
       );
     } else {
-      const pixelsPerMm = canvas.width / usableWidth;
-      const pageHeightPx = Math.floor(
-        usableHeight * pixelsPerMm
-      );
+      const canvasScale = canvas.width / Math.max(1, target.scrollWidth);
+      const ranges = buildPageRanges(canvas, templateRoot, canvasScale);
 
-      let sourceY = 0;
-      let pageIndex = 0;
+      ranges.forEach((range, index) => {
+        if (index > 0) pdf.addPage();
 
-      while (sourceY < canvas.height) {
-        const currentHeightPx = Math.min(
-          pageHeightPx,
-          canvas.height - sourceY
-        );
-
-        const pageCanvas = document.createElement("canvas");
-
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = currentHeightPx;
-
-        const context = pageCanvas.getContext("2d");
-
-        if (!context) {
-          throw new Error("Unable to create PDF page.");
-        }
-
-        context.fillStyle = "#ffffff";
-        context.fillRect(
-          0,
-          0,
-          pageCanvas.width,
-          pageCanvas.height
-        );
-
-        context.drawImage(
+        const slice = createCanvasSlice(
           canvas,
-          0,
-          sourceY,
-          canvas.width,
-          currentHeightPx,
-          0,
-          0,
-          canvas.width,
-          currentHeightPx
+          range.start,
+          range.end - range.start,
         );
 
-        if (pageIndex > 0) {
-          pdf.addPage();
-        }
-
-        const pageHeightMm =
-          currentHeightPx / pixelsPerMm;
+        const imageData = slice.toDataURL('image/jpeg', 0.98);
+        const renderWidth = USABLE_WIDTH_MM;
+        const renderHeight = renderWidth * (slice.height / slice.width);
 
         pdf.addImage(
-          pageCanvas,
-          "PNG",
-          margin,
-          margin,
-          usableWidth,
-          pageHeightMm,
+          imageData,
+          'JPEG',
+          MARGIN_MM,
+          MARGIN_MM,
+          renderWidth,
+          renderHeight,
           undefined,
-          "FAST"
+          'FAST',
         );
-
-        sourceY += currentHeightPx;
-        pageIndex += 1;
-      }
+      });
     }
 
-    const safeFileName =
-      fileName
-        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
-        .trim() || "quotation";
+    const safeNumber = String(quotationNumber || 'quotation')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'quotation';
 
-    pdf.save(
-      safeFileName.toLowerCase().endsWith(".pdf")
-        ? safeFileName
-        : `${safeFileName}.pdf`
-    );
+    pdf.save(`Quotation-${safeNumber}.pdf`);
   } finally {
     iframe.remove();
   }
