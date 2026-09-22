@@ -649,7 +649,12 @@ export default function App() {
         />
 
         {/* Content Viewport */}
-        <main id="main-content-viewport" className="flex-1 w-full min-w-0 p-3 sm:p-5 lg:p-6 transition-all">
+        <main
+  id="main-content-viewport"
+  className={`flex-1 w-full min-w-0 p-3 sm:p-5 lg:p-6 transition-all duration-300 ${
+    isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
+  }`}
+>
           
           {/* VIEW 1: Quotation Maker (Clear Full-Width Form View - No cramped split) */}
           {activeTab === 'editor' && (
