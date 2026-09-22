@@ -212,26 +212,32 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         padding: 6px 6px !important;
         margin: 0 auto !important;
       }
+
       .email-wrapper > tbody > tr > td {
         padding-left: 0 !important;
         padding-right: 0 !important;
       }
+
       .email-card {
         width: 100% !important;
         max-width: 100% !important;
-        padding: 14px 12px !important;
+        padding: 12px 10px !important;
         margin: 0 auto !important;
         box-sizing: border-box !important;
       }
-      .header-col-left, .header-col-right, .grid-col, .payment-col-bank, .payment-col-qr, .footer-col-left, .footer-col-right {
+
+      .header-col-left,
+      .header-col-right {
         box-sizing: border-box !important;
       }
+
       .header-col-left {
         display: block !important;
         width: 100% !important;
         padding-right: 0 !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 8px !important;
       }
+
       .header-col-right {
         display: block !important;
         width: 100% !important;
@@ -239,30 +245,50 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         max-width: 100% !important;
         text-align: left !important;
       }
+
+      .hotel-header-title {
+        font-size: 15px !important;
+        line-height: 1.15 !important;
+        letter-spacing: -0.2px !important;
+      }
+
+      .header-col-left > div {
+        overflow-wrap: break-word !important;
+        word-break: normal !important;
+      }
+
       .meta-box-table {
         width: 100% !important;
         max-width: 100% !important;
         text-align: left !important;
       }
+
       .meta-box-td {
         text-align: left !important;
       }
+
       .grid-col {
         display: block !important;
         width: 100% !important;
         padding: 0 !important;
-        margin-bottom: 10px !important;
+        margin: 0 0 10px 0 !important;
+        box-sizing: border-box !important;
       }
+
       .grid-col > table {
         width: 100% !important;
         max-width: 100% !important;
+        box-sizing: border-box !important;
       }
+
       .payment-col-bank {
         display: block !important;
         width: 100% !important;
         padding-right: 0 !important;
-        margin-bottom: 12px !important;
+        margin-bottom: 10px !important;
+        box-sizing: border-box !important;
       }
+
       .payment-col-qr {
         display: block !important;
         width: 100% !important;
@@ -270,27 +296,51 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         padding-left: 0 !important;
         text-align: center !important;
         margin: 0 auto !important;
+        box-sizing: border-box !important;
       }
+
       .payment-col-qr > table {
         width: 140px !important;
         max-width: 140px !important;
         margin: 0 auto !important;
       }
-      .footer-col-left, .footer-col-right {
+
+      .footer-col-left,
+      .footer-col-right {
         display: block !important;
         width: 100% !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
-        margin-bottom: 12px !important;
+        margin: 0 0 10px 0 !important;
+        box-sizing: border-box !important;
       }
+
       .footer-col-right {
         text-align: left !important;
       }
+
+      .footer-col-right > div:first-child {
+        font-size: 9px !important;
+        line-height: 1.25 !important;
+        margin-bottom: 3px !important;
+      }
+
+      .footer-col-right > div:last-child {
+        font-size: 8px !important;
+        line-height: 1.35 !important;
+        overflow-wrap: break-word !important;
+        word-break: normal !important;
+      }
+
       .tariff-table {
         width: 100% !important;
+        max-width: 100% !important;
         table-layout: fixed !important;
+        box-sizing: border-box !important;
       }
-      .tariff-table th, .tariff-table td {
+
+      .tariff-table th,
+      .tariff-table td {
         font-size: 9px !important;
         padding: 6px 2px !important;
         line-height: 1.25 !important;
@@ -298,8 +348,24 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         overflow-wrap: normal !important;
         word-break: normal !important;
       }
+
       .tariff-table th {
         white-space: nowrap !important;
+      }
+
+      .mobile-note-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 8px 0 0 0 !important;
+        padding: 7px 8px !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 5px !important;
+        background-color: #FFFFFF !important;
+        font-size: 9px !important;
+        line-height: 1.35 !important;
+        overflow-wrap: break-word !important;
+        word-break: normal !important;
       }
     }
   </style>
@@ -323,7 +389,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                   <tr>
                     <!-- Hotel Details Column -->
                     <td class="header-col-left" style="vertical-align: top; padding-right: 12px;">
-                      <div style="font-size: 18px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: -0.3px; line-height: 1.2;">
+                      <div class="hotel-header-title" style="font-size: 18px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: -0.3px; line-height: 1.2;">
                         ${data.hotel.name}
                       </div>
                       ${data.hotel.tagline ? `
@@ -429,8 +495,10 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                               </tr>
                               ${data.stay.specialRequirement ? `
                               <tr>
-                                <td colspan="2" style="padding-top: 4px; border-top: 1px dashed ${borderGray}; font-size: 9px; color: ${textBlack};">
-                                  <strong>Note:</strong> ${data.stay.specialRequirement}
+                                <td colspan="2" style="padding: 0;">
+                                  <div class="mobile-note-card" style="margin-top: 6px; padding: 7px 8px; border: 1px solid ${borderGray}; border-radius: 5px; background-color: #FFFFFF; font-size: 9px; line-height: 1.35; color: ${textBlack}; box-sizing: border-box;">
+                                    <strong>Note:</strong> ${data.stay.specialRequirement}
+                                  </div>
                                 </td>
                               </tr>` : ''}
                             </table>
@@ -602,7 +670,8 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                         ${data.signatory.thankYouMessage || 'Thank you for choosing us!'}
                       </div>
                       <div style="font-size: 10px; color: ${textBlack}; line-height: 1.45;">
-                        Phone: <a href="tel:${data.hotel.phone}" style="color: ${textBlack} !important; text-decoration: none !important; font-weight: 600;">${data.hotel.phone}</a> &bull; Email: <a href="mailto:${data.hotel.email}" style="color: ${textBlack} !important; text-decoration: none !important; font-weight: 600;">${data.hotel.email}</a><br>
+                        Phone: <a href="tel:${data.hotel.phone}" style="color: ${textBlack} !important; text-decoration: none !important; font-weight: 600;">${data.hotel.phone}</a><br>
+                        Email: <a href="mailto:${data.hotel.email}" style="color: ${textBlack} !important; text-decoration: none !important; font-weight: 600;">${data.hotel.email}</a><br>
                         Web: <a href="${webHref}" target="_blank" style="color: ${textBlack} !important; text-decoration: none !important; font-weight: 600;">${data.hotel.website}</a>
                       </div>
                     </td>
