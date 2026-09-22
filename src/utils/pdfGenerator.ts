@@ -1,44 +1,150 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-function sanitizeCssText(cssText: string): string {
-  return cssText
-    .replace(/oklch\([^)]*\)/gi, "#000000")
-    .replace(/oklab\([^)]*\)/gi, "#000000")
-    .replace(/color\([^)]*\)/gi, "#000000");
+const PDF_WIDTH_PX = 794;
+
+function convertCssColors(value: string): string {
+  if (!value || !/(oklch|oklab|color\()/i.test(value)) {
+    return value;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    return value
+      .replace(/oklch\([^)]*\)/gi, "#000000")
+      .replace(/oklab\([^)]*\)/gi, "#000000")
+      .replace(/color\([^)]*\)/gi, "#000000");
+  }
+
+  const replaceColor = (match: string): string => {
+    try {
+      context.fillStyle = "#000000";
+      context.fillStyle = match;
+      return context.fillStyle;
+    } catch {
+      return "#000000";
+    }
+  };
+
+  return value
+    .replace(/oklch\([^)]*\)/gi, replaceColor)
+    .replace(/oklab\([^)]*\)/gi, replaceColor)
+    .replace(/color\([^)]*\)/gi, replaceColor);
 }
 
-function removeUnsupportedStyles(doc: Document): void {
-  const styleSheets = Array.from(doc.querySelectorAll("style"));
+function copyComputedStyles(
+  source: Element,
+  target: Element
+): void {
+  const computed = window.getComputedStyle(source);
+  const targetStyle = (target as HTMLElement).style;
 
-  for (const style of styleSheets) {
-    if (style.textContent) {
-      style.textContent = sanitizeCssText(style.textContent);
+  for (let index = 0; index < computed.length; index += 1) {
+    const property = computed[index];
+
+    if (!property || property.startsWith("--")) {
+      continue;
+    }
+
+    let value = computed.getPropertyValue(property);
+
+    if (!value) {
+      continue;
+    }
+
+    value = convertCssColors(value);
+
+    try {
+      targetStyle.setProperty(
+        property,
+        value,
+        computed.getPropertyPriority(property)
+      );
+    } catch {
+      // Ignore properties that cannot be applied inline.
     }
   }
 
-  const linkedStylesheets = Array.from(
-    doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')
-  );
+  // Remove utility classes so no Tailwind/application stylesheet is needed.
+  target.removeAttribute("class");
 
-  for (const link of linkedStylesheets) {
-    link.remove();
+  const sourceChildren = Array.from(source.children);
+  const targetChildren = Array.from(target.children);
+
+  for (
+    let index = 0;
+    index < sourceChildren.length;
+    index += 1
+  ) {
+    const sourceChild = sourceChildren[index];
+    const targetChild = targetChildren[index];
+
+    if (targetChild) {
+      copyComputedStyles(sourceChild, targetChild);
+    }
   }
 }
 
-function convertInlineUnsupportedColors(root: HTMLElement): void {
-  const elements = [
-    root,
-    ...Array.from(root.querySelectorAll<HTMLElement>("*")),
-  ];
+function prepareIsolatedDocument(
+  iframe: HTMLIFrameElement,
+  html: string
+): HTMLElement {
+  const iframeDocument = iframe.contentDocument;
 
-  for (const element of elements) {
-    const style = element.getAttribute("style");
-
-    if (!style) continue;
-
-    element.setAttribute("style", sanitizeCssText(style));
+  if (!iframeDocument) {
+    throw new Error("Unable to create PDF rendering document.");
   }
+
+  iframeDocument.open();
+  iframeDocument.write(
+    `<!doctype html><html><head><meta charset="UTF-8"><base href="${document.baseURI}"></head><body></body></html>`
+  );
+  iframeDocument.close();
+
+  const source = document.createElement("div");
+
+  source.style.position = "fixed";
+  source.style.left = "0";
+  source.style.top = "0";
+  source.style.width = `${PDF_WIDTH_PX}px`;
+  source.style.maxWidth = `${PDF_WIDTH_PX}px`;
+  source.style.margin = "0";
+  source.style.padding = "0";
+  source.style.background = "#ffffff";
+  source.style.overflow = "visible";
+  source.innerHTML = html;
+
+  document.body.appendChild(source);
+
+  const isolatedRoot = iframeDocument.createElement("div");
+
+  isolatedRoot.style.width = `${PDF_WIDTH_PX}px`;
+  isolatedRoot.style.maxWidth = `${PDF_WIDTH_PX}px`;
+  isolatedRoot.style.margin = "0";
+  isolatedRoot.style.padding = "0";
+  isolatedRoot.style.background = "#ffffff";
+  isolatedRoot.style.color = "#000000";
+  isolatedRoot.innerHTML = source.innerHTML;
+
+  iframeDocument.body.style.margin = "0";
+  iframeDocument.body.style.padding = "0";
+  iframeDocument.body.style.width = `${PDF_WIDTH_PX}px`;
+  iframeDocument.body.style.background = "#ffffff";
+
+  iframeDocument.body.appendChild(isolatedRoot);
+
+  // Browser computes Tailwind/quotation styles here while the real app CSS
+  // is still available. Those computed styles are then copied as inline CSS.
+  copyComputedStyles(source, isolatedRoot);
+
+  source.remove();
+
+  return isolatedRoot;
 }
 
 export async function generateQuotationPdf(
@@ -49,32 +155,34 @@ export async function generateQuotationPdf(
     throw new Error("Quotation HTML is empty.");
   }
 
-  const container = document.createElement("div");
+  const iframe = document.createElement("iframe");
 
-  container.style.position = "fixed";
-  container.style.left = "0";
-  container.style.top = "0";
-  container.style.width = "794px";
-  container.style.maxWidth = "794px";
-  container.style.margin = "0";
-  container.style.padding = "0";
-  container.style.background = "#ffffff";
-  container.style.color = "#000000";
-  container.style.visibility = "hidden";
-  container.style.pointerEvents = "none";
-  container.style.zIndex = "-1";
-  container.style.overflow = "visible";
+  iframe.style.position = "fixed";
+  iframe.style.left = "0";
+  iframe.style.top = "0";
+  iframe.style.width = `${PDF_WIDTH_PX}px`;
+  iframe.style.height = "12000px";
+  iframe.style.border = "0";
+  iframe.style.margin = "0";
+  iframe.style.padding = "0";
+  iframe.style.background = "#ffffff";
+  iframe.style.zIndex = "-2147483647";
+  iframe.setAttribute("aria-hidden", "true");
 
-  container.innerHTML = html;
-
-  document.body.appendChild(container);
+  document.body.appendChild(iframe);
 
   try {
-    await document.fonts.ready;
+    const root = prepareIsolatedDocument(iframe, html);
 
-    convertInlineUnsupportedColors(container);
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
 
-    const images = Array.from(container.querySelectorAll("img"));
+    const images = Array.from(
+      root.querySelectorAll<HTMLImageElement>("img")
+    );
 
     await Promise.all(
       images.map(
@@ -101,50 +209,22 @@ export async function generateQuotationPdf(
       });
     });
 
-    const canvas = await html2canvas(container, {
+    /*
+     * This html2canvas call runs inside a completely isolated iframe.
+     * There are no Tailwind stylesheets and no oklch() rules available
+     * for html2canvas to parse.
+     */
+    const canvas = await html2canvas(root, {
       scale: 2,
       backgroundColor: "#ffffff",
       useCORS: true,
       allowTaint: false,
       logging: false,
       imageTimeout: 10000,
-      width: 794,
-      windowWidth: 794,
+      width: PDF_WIDTH_PX,
+      windowWidth: PDF_WIDTH_PX,
       scrollX: 0,
       scrollY: 0,
-
-      onclone: (clonedDocument) => {
-        /*
-         * html2canvas parses the cloned document's stylesheets.
-         * Remove linked application stylesheets and sanitize every
-         * inline <style> before html2canvas starts rendering.
-         */
-        removeUnsupportedStyles(clonedDocument);
-
-        const clonedRoot =
-          clonedDocument.body.querySelector<HTMLElement>(
-            "[data-pdf-root]"
-          );
-
-        if (clonedRoot) {
-          convertInlineUnsupportedColors(clonedRoot);
-        }
-
-        const allElements = Array.from(
-          clonedDocument.body.querySelectorAll<HTMLElement>("*")
-        );
-
-        for (const element of allElements) {
-          const style = element.getAttribute("style");
-
-          if (style && /(oklch|oklab|color\()/i.test(style)) {
-            element.setAttribute(
-              "style",
-              sanitizeCssText(style)
-            );
-          }
-        }
-      },
     });
 
     if (!canvas.width || !canvas.height) {
@@ -165,11 +245,7 @@ export async function generateQuotationPdf(
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 2;
 
-    /*
-     * Fit the complete quotation onto one A4 page whenever possible.
-     * This avoids splitting payment/terms cards when the quotation
-     * is only slightly taller than A4.
-     */
+    // Fit the whole quotation on one A4 page whenever possible.
     const fitScale = Math.min(
       usableWidth / canvas.width,
       usableHeight / canvas.height
@@ -192,11 +268,6 @@ export async function generateQuotationPdf(
         "FAST"
       );
     } else {
-      /*
-       * Genuine multi-page quotation.
-       * No browser print dialog, browser headers, URLs,
-       * timestamps or page numbers are added.
-       */
       const pixelsPerMm = canvas.width / usableWidth;
       const pageHeightPx = Math.floor(
         usableHeight * pixelsPerMm
@@ -246,7 +317,7 @@ export async function generateQuotationPdf(
           pdf.addPage();
         }
 
-        const renderedHeight =
+        const pageHeightMm =
           currentHeightPx / pixelsPerMm;
 
         pdf.addImage(
@@ -255,7 +326,7 @@ export async function generateQuotationPdf(
           margin,
           margin,
           usableWidth,
-          renderedHeight,
+          pageHeightMm,
           undefined,
           "FAST"
         );
@@ -276,6 +347,6 @@ export async function generateQuotationPdf(
         : `${safeFileName}.pdf`
     );
   } finally {
-    container.remove();
+    iframe.remove();
   }
 }
