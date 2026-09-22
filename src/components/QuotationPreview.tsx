@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { QuotationData, QuotationTemplate } from '../types/quotation';
 import { renderTemplate } from '../utils/templateEngine';
 import { generateEmailSafeHtml } from '../utils/emailRenderer';
+import { generateQuotationPdf } from '../utils/pdfGenerator';
 import { 
   Mail, 
   Copy, 
@@ -122,8 +123,22 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
   };
 
   // Print / Save PDF
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    try {
+      const pdfHtml = currentTemplate
+        ? renderTemplate(currentTemplate.html, data)
+        : renderedHtml;
+
+      await generateQuotationPdf(
+        pdfHtml,
+        data.quotationNumber || 'quotation'
+      );
+
+      onShowToast('success', 'PDF downloaded successfully.');
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      onShowToast('error', 'PDF generation failed. Please try again.');
+    }
   };
 
   const previewBody = (
