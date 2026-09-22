@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { QuotationData, QuotationTemplate } from '../types/quotation';
 import { renderTemplate } from '../utils/templateEngine';
 import { generateEmailSafeHtml } from '../utils/emailRenderer';
+import { generateQuotationPdf } from '../utils/pdfGenerator';
 import { 
   Mail, 
   Copy, 
@@ -121,11 +122,19 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
     }
   };
 
-  // Print / Save PDF - always print the clean quotation preview only.
-  const handlePrint = () => {
-    // Ensure A4 quotation mode is active before printing.
-    if (previewMode !== 'a4') setPreviewMode('a4');
-    window.setTimeout(() => window.print(), 80);
+  // Deterministic PDF export. Uses a fixed A4 renderer instead of the browser print dialog.
+  const handlePrint = async () => {
+    try {
+      const pdfHtml = currentTemplate
+        ? renderTemplate(currentTemplate.html, data)
+        : renderedHtml;
+
+      await generateQuotationPdf(pdfHtml, data.quotationNumber || 'quotation');
+      onShowToast('success', 'PDF downloaded successfully.');
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      onShowToast('error', 'PDF generation failed. Please try again.');
+    }
   };
 
   const previewBody = (
@@ -283,7 +292,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
           className="w-full max-w-[800px] my-auto"
         >
           {/* Card Container simulating A4 sheet with subtle shadow */}
-          <div className="quotation-print-sheet bg-white rounded-lg shadow-md border border-slate-300/80 overflow-hidden print:border-none print:shadow-none print:rounded-none">
+          <div className="bg-white rounded-lg shadow-md border border-slate-300/80 overflow-hidden print:border-none print:shadow-none print:rounded-none">
             <div 
               id="quotation-html-rendered-content"
               dangerouslySetInnerHTML={{ __html: renderedHtml }}
