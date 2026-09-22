@@ -30,6 +30,8 @@ import {
 import { calculateTotals, calculateQuotationSummary } from './utils/calculations';
 import { generateUpiQrDataUrl, getUpiQrRemoteUrl } from './utils/qrGenerator';
 import { generateEmailSafeHtml } from './utils/emailRenderer';
+import { renderTemplate } from './utils/templateEngine';
+import { generateQuotationPdf } from './utils/pdfGenerator';
 
 import { Navbar, ActiveTab } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
@@ -486,9 +488,29 @@ export default function App() {
   }, [quotationData, promoBanner, showToast]);
 
   // Print PDF
-  const handlePrintPdf = useCallback(() => {
-    window.print();
-  }, []);
+  const handlePrintPdf = useCallback(async () => {
+    try {
+      const currentTemplate =
+        templates.find((template) => template.id === selectedTemplateId) ||
+        templates[0];
+
+      if (!currentTemplate) {
+        throw new Error('No quotation template is selected.');
+      }
+
+      const pdfHtml = renderTemplate(currentTemplate.html, quotationData);
+
+      await generateQuotationPdf(
+        pdfHtml,
+        quotationData.quotationNumber || 'quotation'
+      );
+
+      showToast('success', 'PDF downloaded successfully.');
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      showToast('error', 'PDF generation failed. Please try again.');
+    }
+  }, [templates, selectedTemplateId, quotationData, showToast]);
 
   // Template Handlers
   const handleSaveTemplate = useCallback((tpl: QuotationTemplate) => {
@@ -649,12 +671,7 @@ export default function App() {
         />
 
         {/* Content Viewport */}
-        <main
-  id="main-content-viewport"
-  className={`flex-1 w-full min-w-0 p-3 sm:p-5 lg:p-6 transition-all duration-300 ${
-    isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'
-  }`}
->
+        <main id="main-content-viewport" className="flex-1 w-full min-w-0 p-3 sm:p-5 lg:p-6 transition-all">
           
           {/* VIEW 1: Quotation Maker (Clear Full-Width Form View - No cramped split) */}
           {activeTab === 'editor' && (
