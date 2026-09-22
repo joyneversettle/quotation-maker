@@ -156,6 +156,73 @@ async function renderDomToCanvas(root: HTMLElement): Promise<HTMLCanvasElement> 
   }
 }
 
+
+function trimTrailingBlankRows(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  const context = canvas.getContext("2d");
+  if (!context) return canvas;
+
+  const width = canvas.width;
+  const height = canvas.height;
+  if (width <= 0 || height <= 0) return canvas;
+
+  const data = context.getImageData(0, 0, width, height).data;
+  const rowStride = width * 4;
+  const WHITE_THRESHOLD = 250;
+  const ALPHA_THRESHOLD = 8;
+
+  let lastContentRow = -1;
+
+  for (let y = height - 1; y >= 0; y -= 1) {
+    const offset = y * rowStride;
+    let hasContent = false;
+
+    for (let x = 0; x < width; x += 1) {
+      const i = offset + x * 4;
+      const alpha = data[i + 3];
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      if (alpha > ALPHA_THRESHOLD &&
+          (r < WHITE_THRESHOLD || g < WHITE_THRESHOLD || b < WHITE_THRESHOLD)) {
+        hasContent = true;
+        break;
+      }
+    }
+
+    if (hasContent) {
+      lastContentRow = y;
+      break;
+    }
+  }
+
+  // Keep a very small safety margin, but remove the large trailing blank
+  // area that otherwise creates an unnecessary extra PDF page.
+  const safetyRows = Math.min(8, Math.max(0, height - lastContentRow - 1));
+  const trimmedHeight = lastContentRow < 0
+    ? 1
+    : Math.min(height, lastContentRow + 1 + safetyRows);
+
+  if (trimmedHeight >= height) return canvas;
+
+  const trimmed = document.createElement("canvas");
+  trimmed.width = width;
+  trimmed.height = trimmedHeight;
+
+  const trimmedContext = trimmed.getContext("2d");
+  if (!trimmedContext) return canvas;
+
+  trimmedContext.fillStyle = "#ffffff";
+  trimmedContext.fillRect(0, 0, width, trimmedHeight);
+  trimmedContext.drawImage(
+    canvas,
+    0, 0, width, trimmedHeight,
+    0, 0, width, trimmedHeight
+  );
+
+  return trimmed;
+}
+
 function createCanvasSlice(source: HTMLCanvasElement, sourceY: number, height: number): HTMLCanvasElement {
   const slice = document.createElement("canvas");
   slice.width = source.width;
@@ -196,7 +263,11 @@ export async function generateQuotationPdf(html: string, fileName = "quotation.p
 
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-    const canvas = await renderDomToCanvas(container);
+    let canvas = await renderDomToCanvas(container);
+    // Prevent a tiny trailing overflow/blank row from becoming an entire
+    // second PDF page. This does not alter the quotation content.
+    canvas = trimTrailingBlankRows(canvas);
+
     const usableWidth = A4_WIDTH_MM - PDF_MARGIN_MM * 2;
     const usableHeight = A4_HEIGHT_MM - PDF_MARGIN_MM * 2;
     const pixelsPerMm = canvas.width / usableWidth;
