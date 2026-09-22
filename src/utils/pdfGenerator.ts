@@ -183,6 +183,63 @@ function createSlice(
   return slice;
 }
 
+/*
+ * Walks the DOM inside `root` and collects the top/bottom edges (in canvas
+ * pixel space) of every "atomic" element — i.e. an element with no
+ * block-level children. These edges are safe places to cut a page,
+ * because cutting there never slices through the middle of a text line,
+ * a QR image, a table row, etc.
+ */
+function getSafeBreakPoints(root: HTMLElement, scale: number): number[] {
+  const rootTop = root.getBoundingClientRect().top;
+  const points = new Set<number>();
+
+  const all = Array.from(root.querySelectorAll<HTMLElement>("*"));
+
+  for (const el of all) {
+    const hasBlockChild = Array.from(el.children).some((c) => {
+      const display = (el.ownerDocument.defaultView ?? window).getComputedStyle(
+        c
+      ).display;
+      return display !== "inline" && display !== "inline-block";
+    });
+
+    if (hasBlockChild) continue;
+
+    const rect = el.getBoundingClientRect();
+    if (rect.height === 0) continue;
+
+    points.add(Math.round((rect.top - rootTop) * scale));
+    points.add(Math.round((rect.bottom - rootTop) * scale));
+  }
+
+  const rootRect = root.getBoundingClientRect();
+  points.add(0);
+  points.add(Math.round(rootRect.height * scale));
+
+  return Array.from(points).sort((a, b) => a - b);
+}
+
+/*
+ * Finds the safe break point closest to (but not exceeding) `target`,
+ * while staying strictly greater than `minY` so we always make progress.
+ */
+function nearestSafeBreak(
+  target: number,
+  safePoints: number[],
+  minY: number
+): number {
+  let best = -1;
+
+  for (const p of safePoints) {
+    if (p > minY && p <= target) {
+      best = p;
+    }
+  }
+
+  return best;
+}
+
 export async function generateQuotationPdf(
   html: string,
   fileName = "quotation.pdf"
@@ -257,31 +314,40 @@ export async function generateQuotationPdf(
       /*
        * Multiple pages only when the quotation is genuinely taller
        * than A4. Each page keeps the same full printable width.
+       *
+       * Page breaks are snapped to "safe" points between DOM elements
+       * so that no text line, image (e.g. the UPI QR code), or table
+       * row is ever sliced through the middle.
        */
       const pixelsPerMm = canvas.width / usableWidth;
       const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
+      const scale = canvas.width / RENDER_WIDTH_PX; // matches html2canvas scale
+
+      const safePoints = getSafeBreakPoints(root, scale);
 
       let sourceY = 0;
       let pageIndex = 0;
 
       while (sourceY < canvas.height) {
-        const currentHeightPx = Math.min(
-          pageHeightPx,
-          canvas.height - sourceY
-        );
+        const idealEnd = Math.min(sourceY + pageHeightPx, canvas.height);
 
-        const pageCanvas = createSlice(
-          canvas,
-          sourceY,
-          currentHeightPx
-        );
+        let breakY = nearestSafeBreak(idealEnd, safePoints, sourceY);
+
+        // No safe point found in range (e.g. one giant element taller
+        // than a page) — fall back to a hard cut so we still make progress.
+        if (breakY <= sourceY) {
+          breakY = idealEnd;
+        }
+
+        const currentHeightPx = breakY - sourceY;
+
+        const pageCanvas = createSlice(canvas, sourceY, currentHeightPx);
 
         if (pageIndex > 0) {
           pdf.addPage();
         }
 
-        const pageHeightMm =
-          currentHeightPx / pixelsPerMm;
+        const pageHeightMm = currentHeightPx / pixelsPerMm;
 
         pdf.addImage(
           pageCanvas,
@@ -294,15 +360,13 @@ export async function generateQuotationPdf(
           "FAST"
         );
 
-        sourceY += currentHeightPx;
+        sourceY = breakY;
         pageIndex += 1;
       }
     }
 
     const safeFileName =
-      fileName
-        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
-        .trim() || "quotation";
+      fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-").trim() || "quotation";
 
     pdf.save(
       safeFileName.toLowerCase().endsWith(".pdf")
