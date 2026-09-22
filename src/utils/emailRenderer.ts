@@ -474,6 +474,28 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         line-height: 1.2 !important;
         text-align: right !important;
         white-space: nowrap !important;
+        overflow: hidden !important;
+      }
+
+      .footer-col-right > div:first-child {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+      }
+
+      .meta-box-table div {
+        font-size: 8px !important;
+        line-height: 1.15 !important;
+        white-space: nowrap !important;
+      }
+
+      .grid-col .guest-stay-card td {
+        font-size: 7px !important;
+        line-height: 1.2 !important;
+      }
+
+      .grid-col .guest-stay-card a,
+      .grid-col .guest-stay-card strong {
+        white-space: nowrap !important;
       }
     }
   </style>
@@ -497,7 +519,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                   <tr>
                     <!-- Hotel Details Column -->
                     <td class="header-col-left" style="vertical-align: top; padding-right: 12px;">
-                      <div class="hotel-header-title" style="font-size: 18px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: -0.3px; line-height: 1.2;">
+                      <div class="hotel-header-title" style="font-size: 18px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: -0.3px; line-height: 1.05; white-space: nowrap;">
                         ${data.hotel.name}
                       </div>
                       ${data.hotel.tagline ? `
@@ -554,9 +576,9 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                         </tr>
                         <tr>
                           <td style="padding-top: 6px;">
-                            <div style="font-size: 13px; font-weight: 800; color: ${textBlack};">${data.guest.name}</div>
+                            <div style="font-size: 10px; font-weight: 800; color: ${textBlack}; white-space: nowrap; overflow: hidden;">${data.guest.name}</div>
                             ${data.guest.contactPerson && data.guest.contactPerson !== data.guest.name ? `
-                              <div style="font-size: 10px; color: ${textBlack}; font-weight: 600;">Attn: ${data.guest.contactPerson}</div>
+                              <div style="font-size: 7px; color: ${textBlack}; font-weight: 600; white-space: nowrap; overflow: hidden;">Attn: ${data.guest.contactPerson}</div>
                             ` : ''}
                             <div style="font-size: 10px; color: ${textBlack}; margin-top: 3px; line-height: 1.4;">
                               Phone: <a href="tel:${data.guest.phone}" style="color: ${textBlack} !important; text-decoration: none !important; font-weight: 700;">${data.guest.phone}</a><br>
@@ -774,7 +796,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
 
                     <!-- Right: Thank-you message & Contact details -->
                     <td class="footer-col-right" style="vertical-align: bottom; width: 50%; text-align: right; padding-left: 8px;">
-                      <div style="font-size: 11px; font-weight: 700; color: ${textBlack}; margin-bottom: 3px; line-height: 1.3;">
+                      <div style="font-size: 8px; font-weight: 700; color: ${textBlack}; margin-bottom: 3px; line-height: 1.15;">
                         ${data.signatory.thankYouMessage || 'Thank you for choosing us!'}
                       </div>
                       <div style="font-size: 10px; color: ${textBlack}; line-height: 1.45;">
