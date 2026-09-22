@@ -70,7 +70,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
   // Extra Services Rows
   const extraServicesHtml = data.extraServices && data.extraServices.length > 0 ? `
     <!-- Extra Services Table -->
-    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 14px; border: 1px solid ${borderGray}; border-radius: 6px; overflow: hidden; table-layout: fixed;">
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 14px; border: 1px solid ${borderGray}; border-radius: 6px; overflow: hidden; table-layout: fixed;" class="extra-services-table">
       <thead>
         <tr style="background-color: ${tableHeaderBg}; color: #FFFFFF;">
           <th style="padding: 6px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; text-align: left; width: 45%;">Extra Service / Experience</th>
@@ -226,6 +226,27 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         box-sizing: border-box !important;
       }
 
+      .full-mobile-card,
+      .full-mobile-card > tbody,
+      .full-mobile-card > tbody > tr,
+      .full-mobile-card > tbody > tr > td {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      .full-mobile-card {
+        min-width: 100% !important;
+        table-layout: fixed !important;
+      }
+
+      .guest-stay-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-height: 178px !important;
+        box-sizing: border-box !important;
+      }
+
       .header-col-left,
       .header-col-right {
         box-sizing: border-box !important;
@@ -247,9 +268,26 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
       }
 
       .hotel-header-title {
-        font-size: 15px !important;
+        display: block !important;
+        font-size: 10.5px !important;
+        line-height: 1 !important;
+        letter-spacing: 0 !important;
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: clip !important;
+      }
+
+      .header-col-left > div:nth-of-type(1) {
+        font-size: 8px !important;
         line-height: 1.15 !important;
-        letter-spacing: -0.2px !important;
+        letter-spacing: 0.25px !important;
+        white-space: nowrap !important;
+      }
+
+      .header-col-left > div:nth-of-type(2) {
+        font-size: 8.5px !important;
+        line-height: 1.25 !important;
+        margin-top: 4px !important;
       }
 
       .header-col-left > div {
@@ -261,6 +299,11 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         width: 100% !important;
         max-width: 100% !important;
         text-align: left !important;
+        padding: 6px 8px !important;
+      }
+
+      .meta-box-table div {
+        line-height: 1.15 !important;
       }
 
       .meta-box-td {
@@ -320,22 +363,40 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
       }
 
       .footer-col-right > div:first-child {
-        font-size: 9px !important;
-        line-height: 1.25 !important;
+        font-size: 8px !important;
+        line-height: 1.2 !important;
         margin-bottom: 3px !important;
+        text-align: left !important;
       }
 
       .footer-col-right > div:last-child {
-        font-size: 8px !important;
-        line-height: 1.35 !important;
+        font-size: 7.5px !important;
+        line-height: 1.25 !important;
+        text-align: left !important;
         overflow-wrap: break-word !important;
         word-break: normal !important;
       }
 
-      .tariff-table {
+      .tariff-table,
+      .extra-services-table {
+        display: table !important;
         width: 100% !important;
+        min-width: 100% !important;
         max-width: 100% !important;
         table-layout: fixed !important;
+        box-sizing: border-box !important;
+      }
+
+      .full-mobile-card {
+        display: table !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+      }
+
+      .full-mobile-card td {
+        max-width: 100% !important;
         box-sizing: border-box !important;
       }
 
@@ -430,8 +491,8 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                 <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 14px;">
                   <tr>
                     <!-- Guest Details -->
-                    <td class="grid-col" style="vertical-align: top; width: 50%; padding-right: 6px;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px; box-sizing: border-box; height: 100%;">
+                    <td class="grid-col" style="vertical-align: top; width: 50%; padding-right: 6px; box-sizing: border-box;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0" class="guest-stay-card" style="width: 100%; max-width: 100%; background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px; box-sizing: border-box; height: 100%;">
                         <tr>
                           <td style="border-bottom: 1px solid ${borderGray}; padding-bottom: 4px;">
                             <table width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -463,8 +524,8 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                     </td>
 
                     <!-- Stay Details -->
-                    <td class="grid-col" style="vertical-align: top; width: 50%; padding-left: 6px;">
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px; box-sizing: border-box; height: 100%;">
+                    <td class="grid-col" style="vertical-align: top; width: 50%; padding-left: 6px; box-sizing: border-box;">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0" class="guest-stay-card" style="width: 100%; max-width: 100%; background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px; box-sizing: border-box; height: 100%;">
                         <tr>
                           <td style="border-bottom: 1px solid ${borderGray}; padding-bottom: 4px; font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px;">
                             STAY DETAILS
@@ -533,7 +594,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                 ${extraServicesHtml}
 
                 <!-- Financial Breakdown & Grand Total Table -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; box-sizing: border-box;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" class="full-mobile-card" style="width: 100%; max-width: 100%; background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; box-sizing: border-box;">
                   <tr>
                     <td>
                       <div style="font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid ${borderGray}; padding-bottom: 3px; margin-bottom: 8px;">
@@ -543,7 +604,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                   </tr>
                   <tr>
                     <td>
-                      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 11px; line-height: 1.6; color: ${textBlack};">
+                      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; min-width: 100%; font-size: 11px; line-height: 1.6; color: ${textBlack}; table-layout: fixed;">
                         <tr>
                           <td style="color: ${textBlack};">Accommodation Total:</td>
                           <td style="text-align: right; font-weight: 600; color: ${textBlack};">${formatINR(data.calculations.accommodationTotal)}</td>
@@ -568,7 +629,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
 
                         <tr>
                           <td colspan="2" style="padding-top: 6px;">
-                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${tableHeaderBg}; color: #FFFFFF; border-radius: 4px; padding: 8px 10px;">
+                            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="width: 100%; min-width: 100%; background-color: ${tableHeaderBg}; color: #FFFFFF; border-radius: 4px; padding: 8px 10px;">
                               <tr>
                                 <td style="font-size: 12px; font-weight: 800; text-transform: uppercase; color: #FFFFFF;">GRAND TOTAL:</td>
                                 <td style="font-size: 16px; font-weight: 800; text-align: right; color: #FFFFFF; font-family: ${fontFamily};">${formatINR(data.calculations.grandTotal)}</td>
@@ -585,7 +646,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                 </table>
 
                 <!-- Payment & UPI Payment Details Table -->
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; box-sizing: border-box;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" class="full-mobile-card" style="width: 100%; max-width: 100%; background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; box-sizing: border-box;">
                   <tr>
                     <td colspan="2" style="border-bottom: 1px solid ${borderGray}; padding-bottom: 4px; font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px;">
                       PAYMENT &amp; UPI PAYMENT DETAILS
@@ -626,7 +687,7 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
 
                 <!-- Booking Terms Table -->
                 ${termsHtml ? `
-                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; box-sizing: border-box;">
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" class="full-mobile-card" style="width: 100%; max-width: 100%; background-color: ${lightBg}; border: 1px solid ${borderGray}; border-radius: 6px; padding: 10px 12px; margin-bottom: 14px; box-sizing: border-box;">
                   <tr>
                     <td style="border-bottom: 1px solid ${borderGray}; padding-bottom: 4px; font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px;">
                       BOOKING TERMS &amp; STAY POLICIES
