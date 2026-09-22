@@ -43,7 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleSidebar
 }) => {
   return (
-    <header id="app-header" className="bg-[#0B1B3D] text-white border-b border-slate-800 sticky top-0 z-40 no-print">
+    <header id="app-header" className="bg-[#0B1B3D] text-white border-b border-slate-800 sticky top-0 z-[60] no-print">
       <div className="w-full px-3 sm:px-6">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
           
