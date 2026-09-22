@@ -10,6 +10,7 @@ import {
   QuotationTemplate
 } from '../types/quotation';
 import { calculateNights, formatINR } from '../utils/calculations';
+import { NumberStepper } from './NumberStepper';
 import { resolveQrImageSrc } from '../utils/qrGenerator';
 import { 
   Building2, 
@@ -692,9 +693,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Nights (Duration)</label>
-            <input
-              type="number"
-              min="1"
+            <NumberStepper
+              min={1}
               id="input-stay-duration"
               value={data.stay.durationNights}
               onChange={(e) => updateStay('durationNights', Math.max(1, parseInt(e.target.value) || 1))}
@@ -719,9 +719,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Adults</label>
-            <input
-              type="number"
-              min="1"
+            <NumberStepper
+              min={1}
               id="input-stay-adults"
               value={data.stay.adults}
               onChange={(e) => updateStay('adults', Math.max(1, parseInt(e.target.value) || 1))}
@@ -731,9 +730,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Children</label>
-            <input
-              type="number"
-              min="0"
+            <NumberStepper
+              min={0}
               id="input-stay-children"
               value={data.stay.children}
               onChange={(e) => updateStay('children', Math.max(0, parseInt(e.target.value) || 0))}
@@ -743,9 +741,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Total Rooms</label>
-            <input
-              type="number"
-              min="1"
+            <NumberStepper
+              min={1}
               id="input-stay-total-rooms"
               value={data.stay.totalRooms}
               onChange={(e) => updateStay('totalRooms', Math.max(1, parseInt(e.target.value) || 1))}
@@ -755,9 +752,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Extra Bed / Mattress</label>
-            <input
-              type="number"
-              min="0"
+            <NumberStepper
+              min={0}
               id="input-stay-extra-mattress"
               value={data.stay.extraMattress}
               onChange={(e) => updateStay('extraMattress', Math.max(0, parseInt(e.target.value) || 0))}
@@ -897,9 +893,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
                   {/* Rooms Count */}
                   <div className="col-span-1 sm:col-span-2">
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">Rooms</label>
-                    <input
-                      type="number"
-                      min="1"
+                    <NumberStepper
+                      min={1}
                       value={room.roomsCount}
                       onChange={(e) => updateRoomRow(room.id, 'roomsCount', Math.max(1, parseInt(e.target.value) || 1))}
                       className="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white text-center font-bold focus:ring-1 focus:ring-slate-900 outline-none"
@@ -909,9 +904,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
                   {/* Nights Count */}
                   <div className="col-span-1 sm:col-span-2">
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">Nights</label>
-                    <input
-                      type="number"
-                      min="1"
+                    <NumberStepper
+                      min={1}
                       value={room.nightsCount}
                       onChange={(e) => updateRoomRow(room.id, 'nightsCount', Math.max(1, parseInt(e.target.value) || 1))}
                       className="w-full px-2.5 py-2 border border-slate-300 rounded-lg bg-white text-center font-bold focus:ring-1 focus:ring-slate-900 outline-none"
@@ -923,9 +917,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">Rate / Night (₹)</label>
                     <div className="relative">
                       <span className="absolute left-2.5 top-2 text-slate-400 font-bold">₹</span>
-                      <input
-                        type="number"
-                        min="0"
+                      <NumberStepper
+                        min={0}
                         value={room.ratePerNight}
                         onChange={(e) => updateRoomRow(room.id, 'ratePerNight', Math.max(0, parseFloat(e.target.value) || 0))}
                         className="w-full pl-6 pr-2.5 py-2 border border-slate-300 rounded-lg bg-white text-right font-mono font-bold focus:ring-1 focus:ring-slate-900 outline-none"
@@ -945,9 +938,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
                     </div>
 
                     <div className="flex items-stretch rounded-lg border border-slate-300 bg-white focus-within:ring-1 focus-within:ring-slate-900 focus-within:border-slate-900 overflow-hidden shadow-2xs">
-                      <input
-                        type="number"
-                        min="0"
+                      <NumberStepper
+                        min={0}
                         value={room.discountValue}
                         onChange={(e) => updateRoomRow(room.id, 'discountValue', Math.max(0, parseFloat(e.target.value) || 0))}
                         placeholder="0"
@@ -1032,9 +1024,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
                 <div className="sm:col-span-2">
                   <label className="block sm:hidden text-[10px] text-slate-500 mb-0.5">Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
+                  <NumberStepper
+                    min={1}
                     value={service.quantity}
                     onChange={(e) => updateExtraServiceRow(service.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white text-center font-bold focus:ring-1 focus:ring-slate-900 outline-none"
@@ -1043,9 +1034,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
                 <div className="sm:col-span-3">
                   <label className="block sm:hidden text-[10px] text-slate-500 mb-0.5">Rate (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <NumberStepper
+                    min={0}
                     value={service.rate}
                     onChange={(e) => updateExtraServiceRow(service.id, 'rate', Math.max(0, parseFloat(e.target.value) || 0))}
                     placeholder="Rate"
@@ -1100,9 +1090,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
             </div>
 
             <div className="flex items-stretch rounded-lg border border-slate-300 bg-white focus-within:ring-1 focus-within:ring-slate-900 focus-within:border-slate-900 overflow-hidden shadow-2xs mb-2">
-              <input
-                type="number"
-                min="0"
+              <NumberStepper
+                min={0}
                 value={data.taxes.overallDiscountValue}
                 onChange={(e) => updateTaxes('overallDiscountValue', Math.max(0, parseFloat(e.target.value) || 0))}
                 placeholder="0"
@@ -1168,10 +1157,9 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <div>
                   <label className="block text-[11px] text-slate-600 mb-1">CGST (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
+                  <NumberStepper
+                    min={0}
+                    step={0.5}
                     value={data.taxes.cgstPercent}
                     onChange={(e) => updateTaxes('cgstPercent', Math.max(0, parseFloat(e.target.value) || 0))}
                     className="w-full px-2 py-1.5 border border-slate-300 rounded bg-white text-center font-mono font-bold"
@@ -1179,10 +1167,9 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
                 </div>
                 <div>
                   <label className="block text-[11px] text-slate-600 mb-1">SGST (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
+                  <NumberStepper
+                    min={0}
+                    step={0.5}
                     value={data.taxes.sgstPercent}
                     onChange={(e) => updateTaxes('sgstPercent', Math.max(0, parseFloat(e.target.value) || 0))}
                     className="w-full px-2 py-1.5 border border-slate-300 rounded bg-white text-center font-mono font-bold"
@@ -1220,9 +1207,8 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
                 </div>
                 <div>
                   <label className="block text-[11px] text-slate-600 mb-1">Tax Rate (%)</label>
-                  <input
-                    type="number"
-                    min="0"
+                  <NumberStepper
+                    min={0}
                     value={data.taxes.otherTaxPercent}
                     onChange={(e) => updateTaxes('otherTaxPercent', Math.max(0, parseFloat(e.target.value) || 0))}
                     className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white font-mono"
@@ -1324,10 +1310,9 @@ export const QuotationForm: React.FC<QuotationFormProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Payable Advance Percentage (%)</label>
-            <input
-              type="number"
-              min="0"
-              max="100"
+            <NumberStepper
+              min={0}
+              max={100}
               value={data.payment.payableAdvancePercent}
               onChange={(e) => updatePayment('payableAdvancePercent', Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
               className="w-full px-3 py-2 border border-slate-300 rounded-md font-bold focus:ring-1 focus:ring-slate-900 outline-none text-slate-900"
