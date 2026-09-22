@@ -1,6 +1,97 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
+function convertUnsupportedColors(root: HTMLElement): void {
+  const elements = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))];
+
+  const colorProperties = [
+    "color",
+    "backgroundColor",
+    "borderTopColor",
+    "borderRightColor",
+    "borderBottomColor",
+    "borderLeftColor",
+    "outlineColor",
+    "textDecorationColor",
+    "columnRuleColor",
+    "fill",
+    "stroke",
+  ];
+
+  const temp = document.createElement("span");
+  temp.style.position = "fixed";
+  temp.style.left = "-99999px";
+  temp.style.top = "-99999px";
+  temp.style.width = "1px";
+  temp.style.height = "1px";
+  temp.style.visibility = "hidden";
+  document.body.appendChild(temp);
+
+  try {
+    for (const element of elements) {
+      const computed = window.getComputedStyle(element);
+
+      for (const property of colorProperties) {
+        const value = computed.getPropertyValue(property);
+
+        if (!value || !/(oklch|oklab|color\()/i.test(value)) {
+          continue;
+        }
+
+        temp.style.color = "";
+        temp.style.backgroundColor = "";
+        temp.style.borderColor = "";
+
+        if (
+          property === "color" ||
+          property === "fill" ||
+          property === "stroke" ||
+          property === "outlineColor" ||
+          property === "textDecorationColor" ||
+          property === "columnRuleColor"
+        ) {
+          temp.style.color = value;
+          const converted = temp.style.color;
+
+          if (converted && !/(oklch|oklab|color\()/i.test(converted)) {
+            element.style.setProperty(property, converted);
+          }
+        } else {
+          temp.style.backgroundColor = value;
+          const converted = temp.style.backgroundColor;
+
+          if (converted && !/(oklch|oklab|color\()/i.test(converted)) {
+            element.style.setProperty(property, converted);
+          }
+        }
+      }
+
+      const backgroundImage = computed.backgroundImage;
+
+      if (
+        backgroundImage &&
+        /(oklch|oklab|color\()/i.test(backgroundImage)
+      ) {
+        element.style.backgroundImage = "none";
+      }
+
+      const boxShadow = computed.boxShadow;
+
+      if (boxShadow && /(oklch|oklab|color\()/i.test(boxShadow)) {
+        element.style.boxShadow = "none";
+      }
+
+      const textShadow = computed.textShadow;
+
+      if (textShadow && /(oklch|oklab|color\()/i.test(textShadow)) {
+        element.style.textShadow = "none";
+      }
+    }
+  } finally {
+    temp.remove();
+  }
+}
+
 export async function generateQuotationPdf(
   html: string,
   fileName = "quotation.pdf"
@@ -34,6 +125,10 @@ export async function generateQuotationPdf(
   try {
     await document.fonts.ready;
 
+    // html2canvas cannot parse CSS oklch/oklab colors.
+    // Convert only the temporary PDF-render copy, never the live app.
+    convertUnsupportedColors(container);
+
     const images = Array.from(container.querySelectorAll("img"));
 
     await Promise.all(
@@ -46,6 +141,7 @@ export async function generateQuotationPdf(
             }
 
             const done = () => resolve();
+
             img.addEventListener("load", done, { once: true });
             img.addEventListener("error", done, { once: true });
 
@@ -91,11 +187,6 @@ export async function generateQuotationPdf(
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 2;
 
-    /*
-     * First try to fit the complete quotation on one A4 page.
-     * This prevents payment/terms cards from being cut at a page boundary
-     * when the quotation is only slightly taller than A4.
-     */
     const fitScale = Math.min(
       usableWidth / canvas.width,
       usableHeight / canvas.height
@@ -106,24 +197,18 @@ export async function generateQuotationPdf(
 
     if (fittedHeight <= usableHeight) {
       const x = margin + (usableWidth - fittedWidth) / 2;
-      const y = margin;
 
       pdf.addImage(
         canvas,
         "PNG",
         x,
-        y,
+        margin,
         fittedWidth,
         fittedHeight,
         undefined,
         "FAST"
       );
     } else {
-      /*
-       * If the quotation genuinely needs multiple pages, keep the same
-       * width on every page. No browser print dialog, URL, date or page
-       * numbers are added.
-       */
       const pixelsPerMm = canvas.width / usableWidth;
       const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
 
@@ -131,12 +216,14 @@ export async function generateQuotationPdf(
       let pageIndex = 0;
 
       while (sourceY < canvas.height) {
-        const remainingHeight = canvas.height - sourceY;
-        const currentHeightPx = Math.min(pageHeightPx, remainingHeight);
+        const currentPixelHeight = Math.min(
+          pageHeightPx,
+          canvas.height - sourceY
+        );
 
         const pageCanvas = document.createElement("canvas");
         pageCanvas.width = canvas.width;
-        pageCanvas.height = currentHeightPx;
+        pageCanvas.height = currentPixelHeight;
 
         const context = pageCanvas.getContext("2d");
 
@@ -157,18 +244,18 @@ export async function generateQuotationPdf(
           0,
           sourceY,
           canvas.width,
-          currentHeightPx,
+          currentPixelHeight,
           0,
           0,
           canvas.width,
-          currentHeightPx
+          currentPixelHeight
         );
 
         if (pageIndex > 0) {
           pdf.addPage();
         }
 
-        const pageHeightMm = currentHeightPx / pixelsPerMm;
+        const pageHeightMm = currentPixelHeight / pixelsPerMm;
 
         pdf.addImage(
           pageCanvas,
@@ -181,7 +268,7 @@ export async function generateQuotationPdf(
           "FAST"
         );
 
-        sourceY += currentHeightPx;
+        sourceY += currentPixelHeight;
         pageIndex += 1;
       }
     }
