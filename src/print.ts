@@ -1,7 +1,19 @@
+const styleId = 'quotation-print-styles';
+
 const printStyles = `
   @page {
     size: A4 portrait;
-    margin: 5mm;
+    margin: 6mm;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  #quotation-print-root {
+    display: none;
   }
 
   @media print {
@@ -17,164 +29,152 @@ const printStyles = `
       overflow: visible !important;
     }
 
-    body * {
-      visibility: hidden !important;
+    body > * {
+      display: none !important;
     }
 
-    #quotation-preview-modal-backdrop,
-    #quotation-preview-modal-backdrop * {
+    body > #quotation-print-root {
+      display: block !important;
+      visibility: visible !important;
+      position: static !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-height: 0 !important;
+      height: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+      box-sizing: border-box !important;
+    }
+
+    #quotation-print-root,
+    #quotation-print-root * {
       visibility: visible !important;
     }
 
-    /*
-     * Keep the quotation at the very top of the printed page.
-     * The previous version used position: static, which caused the
-     * hidden editor DOM before the modal to reserve several blank pages.
-     */
-    #quotation-preview-modal-backdrop {
-      position: absolute !important;
-      top: 0 !important;
-      left: 0 !important;
-      right: auto !important;
-      bottom: auto !important;
-      width: 100% !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      padding: 0 !important;
-      margin: 0 !important;
-      background: #ffffff !important;
-      overflow: visible !important;
-      display: block !important;
-      z-index: 999999 !important;
-      backdrop-filter: none !important;
-      -webkit-backdrop-filter: none !important;
-    }
-
-    #quotation-preview-modal-backdrop > div {
-      width: 100% !important;
-      max-width: none !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: none !important;
-      border-radius: 0 !important;
-      box-shadow: none !important;
-      overflow: visible !important;
-      background: #ffffff !important;
-    }
-
-    #quotation-preview-container {
-      width: 100% !important;
-      height: auto !important;
-      min-height: 0 !important;
-      max-height: none !important;
-      border: none !important;
-      border-radius: 0 !important;
-      box-shadow: none !important;
-      overflow: visible !important;
-      background: #ffffff !important;
-    }
-
-    #preview-toolbar {
-      display: none !important;
-      visibility: hidden !important;
-    }
-
-    #live-quotation-render-area {
+    #quotation-print-content {
       display: block !important;
       width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
       height: auto !important;
       min-height: 0 !important;
-      max-height: none !important;
+      margin: 0 auto !important;
+      padding: 0 !important;
       overflow: visible !important;
-      padding: 0 !important;
-      margin: 0 !important;
+      box-sizing: border-box !important;
       background: #ffffff !important;
-    }
-
-    /*
-     * The quotation is slightly taller than one A4 page in its normal
-     * screen size. Use print-only zoom so the complete quotation fits
-     * on one A4 page without changing the on-screen/email design.
-     */
-    #live-quotation-render-area > div {
-      width: 125% !important;
-      max-width: none !important;
-      margin: 0 0 0 -12.5% !important;
-      transform: none !important;
-      transition: none !important;
-      zoom: 0.80 !important;
-    }
-
-    .quotation-print-sheet {
-      width: 100% !important;
-      max-width: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: none !important;
-      border-radius: 0 !important;
-      box-shadow: none !important;
-      overflow: visible !important;
-      background: #ffffff !important;
-    }
-
-    #quotation-html-rendered-content {
-      width: 100% !important;
-      max-width: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #ffffff !important;
+      color: #000000 !important;
       font-size: 9px !important;
       line-height: 1.16 !important;
-      color: #000000 !important;
     }
 
-    #quotation-html-rendered-content table {
+    #quotation-print-content table {
       width: 100% !important;
       max-width: 100% !important;
       border-collapse: collapse !important;
+      table-layout: auto !important;
     }
 
-    #quotation-html-rendered-content th,
-    #quotation-html-rendered-content td {
+    #quotation-print-content th,
+    #quotation-print-content td {
       padding-top: 2px !important;
       padding-bottom: 2px !important;
     }
 
-    #quotation-html-rendered-content p {
+    #quotation-print-content p {
       margin-top: 1px !important;
       margin-bottom: 1px !important;
     }
 
-    #quotation-html-rendered-content img {
+    #quotation-print-content img {
       max-width: 100% !important;
+      height: auto !important;
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
 
-    #quotation-html-rendered-content tr {
+    #quotation-print-content tr {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
 
-    #quotation-html-rendered-content table,
-    #quotation-html-rendered-content .mobile-note-card {
+    #quotation-print-content table,
+    #quotation-print-content .mobile-note-card {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
+    }
+
+    #quotation-print-content * {
+      box-sizing: border-box !important;
     }
   }
 `;
 
-const styleId = 'quotation-print-styles';
+function ensurePrintStyles() {
+  if (document.getElementById(styleId)) return;
 
-if (!document.getElementById(styleId)) {
   const style = document.createElement('style');
   style.id = styleId;
   style.textContent = printStyles;
   document.head.appendChild(style);
 }
+
+function cleanupPrintRoot(root: HTMLElement) {
+  root.remove();
+  document.body.removeAttribute('data-quotation-printing');
+}
+
+function printQuotation() {
+  ensurePrintStyles();
+
+  const source = document.getElementById('quotation-html-rendered-content');
+
+  if (!source) {
+    console.warn(
+      'Quotation print content was not found. Please open the quotation preview first.',
+    );
+    return;
+  }
+
+  const existing = document.getElementById('quotation-print-root');
+  if (existing) existing.remove();
+
+  const root = document.createElement('div');
+  root.id = 'quotation-print-root';
+  root.setAttribute('aria-hidden', 'true');
+
+  const content = document.createElement('div');
+  content.id = 'quotation-print-content';
+  content.innerHTML = source.innerHTML;
+
+  root.appendChild(content);
+  document.body.appendChild(root);
+  document.body.setAttribute('data-quotation-printing', 'true');
+
+  const oldTitle = document.title;
+  document.title = 'Quotation';
+
+  const finish = () => {
+    cleanupPrintRoot(root);
+    document.title = oldTitle;
+    window.removeEventListener('afterprint', finish);
+  };
+
+  window.addEventListener('afterprint', finish);
+
+  window.setTimeout(() => {
+    originalPrint();
+  }, 100);
+}
+
+const originalPrint = window.print.bind(window);
+
+ensurePrintStyles();
+
+window.print = () => {
+  printQuotation();
+};
 
 export {};
