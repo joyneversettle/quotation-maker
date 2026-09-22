@@ -1,97 +1,66 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-const RENDER_WIDTH_PX = 794;
+const PDF_WIDTH_PX = 794;
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const PDF_MARGIN_MM = 4;
 
-/**
- * Resolve browser-supported color functions to RGB once in the real document.
- * html2canvas can then use the same visual colors without parsing oklch/oklab.
- */
-function buildColorMap(): Map<string, string> {
-  const map = new Map<string, string>();
-  const sourceTexts: string[] = [];
+function copyComputedStyles(sourceRoot: HTMLElement): void {
+  const elements = [
+    sourceRoot,
+    ...Array.from(sourceRoot.querySelectorAll<HTMLElement>("*")),
+  ];
 
-  document.querySelectorAll("style").forEach((style) => {
-    if (style.textContent) sourceTexts.push(style.textContent);
-  });
+  for (const element of elements) {
+    const computed = window.getComputedStyle(element);
+    let cssText = "";
 
-  const html = document.documentElement.outerHTML;
-  sourceTexts.push(html);
+    for (let index = 0; index < computed.length; index += 1) {
+      const property = computed.item(index);
+      if (!property || property.startsWith("--")) continue;
 
-  const matches = sourceTexts.join("\n").match(
-    /(?:oklch|oklab|color)\([^)]*\)/gi
-  ) || [];
+      const value = computed.getPropertyValue(property);
+      if (!value) continue;
 
-  if (!matches.length) return map;
-
-  const probe = document.createElement("span");
-  probe.style.position = "fixed";
-  probe.style.left = "-10000px";
-  probe.style.top = "0";
-  probe.style.width = "1px";
-  probe.style.height = "1px";
-  probe.style.pointerEvents = "none";
-  probe.style.visibility = "hidden";
-  document.body.appendChild(probe);
-
-  try {
-    for (const token of new Set(matches)) {
-      probe.style.color = "";
-      probe.style.color = token;
-
-      const resolved = window.getComputedStyle(probe).color;
-
-      if (resolved && !/(oklch|oklab|color\()/i.test(resolved)) {
-        map.set(token, resolved);
-      } else {
-        map.set(token, "#000000");
-      }
+      // Computed browser colors are rgb/rgba, so html2canvas never has
+      // to parse the original Tailwind oklch() declaration.
+      cssText += `${property}:${value};`;
     }
-  } finally {
-    probe.remove();
+
+    element.setAttribute("data-pdf-computed-style", cssText);
+  }
+}
+
+function applyComputedStylesInClone(clonedDocument: Document): void {
+  // Remove every stylesheet from the clone. The clone will use only the
+  // browser-resolved computed styles copied below.
+  clonedDocument
+    .querySelectorAll("style, link[rel='stylesheet']")
+    .forEach((node) => node.remove());
+
+  const elements = Array.from(
+    clonedDocument.querySelectorAll<HTMLElement>("[data-pdf-computed-style]")
+  );
+
+  for (const element of elements) {
+    const computedStyle = element.getAttribute("data-pdf-computed-style");
+
+    if (computedStyle) {
+      element.setAttribute("style", computedStyle);
+    }
+
+    element.removeAttribute("data-pdf-computed-style");
   }
 
-  return map;
-}
-
-function replaceUnsupportedColors(
-  cssText: string,
-  colorMap: Map<string, string>
-): string {
-  return cssText.replace(
-    /(?:oklch|oklab|color)\([^)]*\)/gi,
-    (token) => colorMap.get(token) || "#000000"
-  );
-}
-
-function sanitizeClonedStyles(
-  clonedDocument: Document,
-  colorMap: Map<string, string>
-): void {
-  // Preserve ALL application CSS. Only replace unsupported color functions.
-  clonedDocument.querySelectorAll("style").forEach((style) => {
-    if (style.textContent) {
-      style.textContent = replaceUnsupportedColors(
-        style.textContent,
-        colorMap
-      );
-    }
-  });
-
-  // Sanitize inline style attributes without removing any other styling.
-  clonedDocument.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
-    const value = element.getAttribute("style");
-
-    if (value && /(?:oklch|oklab|color)\(/i.test(value)) {
-      element.setAttribute(
-        "style",
-        replaceUnsupportedColors(value, colorMap)
-      );
-    }
-  });
+  const body = clonedDocument.body;
+  if (body) {
+    body.style.margin = "0";
+    body.style.padding = "0";
+    body.style.width = `${PDF_WIDTH_PX}px`;
+    body.style.background = "#ffffff";
+    body.style.overflow = "visible";
+  }
 }
 
 function waitForImages(root: HTMLElement): Promise<void> {
@@ -99,39 +68,36 @@ function waitForImages(root: HTMLElement): Promise<void> {
 
   return Promise.all(
     images.map(
-      (img) =>
+      (image) =>
         new Promise<void>((resolve) => {
-          if (img.complete) {
+          if (image.complete) {
             resolve();
             return;
           }
 
           const finish = () => resolve();
-          img.addEventListener("load", finish, { once: true });
-          img.addEventListener("error", finish, { once: true });
-          window.setTimeout(finish, 10000);
+          image.addEventListener("load", finish, { once: true });
+          image.addEventListener("error", finish, { once: true });
+          window.setTimeout(finish, 15000);
         })
     )
   ).then(() => undefined);
 }
 
-function createCanvasSlice(
+function createPageSlice(
   source: HTMLCanvasElement,
   sourceY: number,
   height: number
 ): HTMLCanvasElement {
-  const slice = document.createElement("canvas");
-  slice.width = source.width;
-  slice.height = height;
+  const pageCanvas = document.createElement("canvas");
+  pageCanvas.width = source.width;
+  pageCanvas.height = height;
 
-  const context = slice.getContext("2d");
-
-  if (!context) {
-    throw new Error("Unable to create PDF page canvas.");
-  }
+  const context = pageCanvas.getContext("2d");
+  if (!context) throw new Error("Unable to create PDF page canvas.");
 
   context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, slice.width, slice.height);
+  context.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
   context.drawImage(
     source,
     0,
@@ -144,7 +110,7 @@ function createCanvasSlice(
     height
   );
 
-  return slice;
+  return pageCanvas;
 }
 
 export async function generateQuotationPdf(
@@ -155,65 +121,43 @@ export async function generateQuotationPdf(
     throw new Error("Quotation HTML is empty.");
   }
 
-  // Resolve colors while the browser still understands oklch/oklab.
-  const colorMap = buildColorMap();
-
   const container = document.createElement("div");
+  container.id = "quotation-pdf-render-root";
   container.style.position = "fixed";
-  container.style.left = "-10000px";
+  container.style.left = "0";
   container.style.top = "0";
-  container.style.width = `${RENDER_WIDTH_PX}px`;
-  container.style.maxWidth = `${RENDER_WIDTH_PX}px`;
+  container.style.width = `${PDF_WIDTH_PX}px`;
+  container.style.maxWidth = `${PDF_WIDTH_PX}px`;
   container.style.margin = "0";
   container.style.padding = "0";
   container.style.background = "#ffffff";
+  container.style.overflow = "visible";
+  container.style.zIndex = "-99999";
   container.style.visibility = "visible";
   container.style.pointerEvents = "none";
-  container.style.zIndex = "-999999";
-  container.style.overflow = "visible";
 
   container.innerHTML = html;
 
-  // PDF-only alignment/width rules. The quotation content/design is otherwise untouched.
-  const pdfRules = document.createElement("style");
-  pdfRules.textContent = `
-    #quotation-pdf-render-root {
-      width: ${RENDER_WIDTH_PX}px !important;
-      max-width: ${RENDER_WIDTH_PX}px !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      box-sizing: border-box !important;
-      background: #ffffff !important;
-    }
+  // The live browser resolves Tailwind oklch() to computed RGB values.
+  // Capture those resolved values before html2canvas sees the clone.
+  const templateRoot =
+    container.querySelector<HTMLElement>(".quotation-template") || container;
 
-    #quotation-pdf-render-root .quotation-template {
-      box-sizing: border-box !important;
-      width: 100% !important;
-      max-width: 100% !important;
-      margin-left: 0 !important;
-      margin-right: 0 !important;
-    }
+  // The template itself is 780px wide in the editor. For PDF only, make it
+  // use the complete 794px render width while keeping its internal padding.
+  templateRoot.style.width = `${PDF_WIDTH_PX}px`;
+  templateRoot.style.maxWidth = `${PDF_WIDTH_PX}px`;
+  templateRoot.style.marginLeft = "0";
+  templateRoot.style.marginRight = "0";
+  templateRoot.style.boxSizing = "border-box";
 
-    #quotation-pdf-render-root table {
-      width: 100% !important;
-      max-width: 100% !important;
-      border-collapse: collapse !important;
-    }
-
-    #quotation-pdf-render-root th,
-    #quotation-pdf-render-root td {
-      vertical-align: middle !important;
-      box-sizing: border-box !important;
-    }
-  `;
-
-  container.id = "quotation-pdf-render-root";
-  container.prepend(pdfRules);
   document.body.appendChild(container);
 
   try {
     await document.fonts.ready;
     await waitForImages(container);
+
+    copyComputedStyles(container);
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
@@ -227,39 +171,13 @@ export async function generateQuotationPdf(
       allowTaint: false,
       backgroundColor: "#ffffff",
       logging: false,
-      imageTimeout: 10000,
-      width: RENDER_WIDTH_PX,
-      windowWidth: RENDER_WIDTH_PX,
+      imageTimeout: 15000,
+      width: PDF_WIDTH_PX,
+      windowWidth: PDF_WIDTH_PX,
       scrollX: 0,
       scrollY: 0,
       onclone: (clonedDocument) => {
-        /*
-         * Keep Tailwind/application styles intact. Only convert the
-         * unsupported color functions that caused html2canvas to fail.
-         */
-        sanitizeClonedStyles(clonedDocument, colorMap);
-
-        const clonedRoot = clonedDocument.getElementById(
-          "quotation-pdf-render-root"
-        );
-
-        if (clonedRoot) {
-          clonedRoot.style.width = `${RENDER_WIDTH_PX}px`;
-          clonedRoot.style.maxWidth = `${RENDER_WIDTH_PX}px`;
-          clonedRoot.style.margin = "0";
-          clonedRoot.style.padding = "0";
-
-          const template = clonedRoot.querySelector<HTMLElement>(
-            ".quotation-template"
-          );
-
-          if (template) {
-            template.style.width = "100%";
-            template.style.maxWidth = "100%";
-            template.style.marginLeft = "0";
-            template.style.marginRight = "0";
-          }
-        }
+        applyComputedStylesInClone(clonedDocument);
       },
     });
 
@@ -276,10 +194,12 @@ export async function generateQuotationPdf(
 
     const usableWidth = A4_WIDTH_MM - PDF_MARGIN_MM * 2;
     const usableHeight = A4_HEIGHT_MM - PDF_MARGIN_MM * 2;
-    const pixelsPerMm = canvas.width / usableWidth;
-    const fullHeightMm = canvas.height / pixelsPerMm;
+    const pxPerMm = canvas.width / usableWidth;
+    const pageHeightPx = Math.floor(usableHeight * pxPerMm);
 
-    // Full printable width, with equal 4 mm margins on both sides.
+    // Keep the full quotation on one page when it fits.
+    const fullHeightMm = canvas.height / pxPerMm;
+
     if (fullHeightMm <= usableHeight) {
       pdf.addImage(
         canvas,
@@ -292,26 +212,14 @@ export async function generateQuotationPdf(
         "FAST"
       );
     } else {
-      // Multiple pages only when the complete quotation cannot fit on one A4 page.
-      const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
       let sourceY = 0;
       let pageIndex = 0;
 
       while (sourceY < canvas.height) {
-        const currentHeight = Math.min(
-          pageHeightPx,
-          canvas.height - sourceY
-        );
+        const height = Math.min(pageHeightPx, canvas.height - sourceY);
+        const pageCanvas = createPageSlice(canvas, sourceY, height);
 
-        const pageCanvas = createCanvasSlice(
-          canvas,
-          sourceY,
-          currentHeight
-        );
-
-        if (pageIndex > 0) {
-          pdf.addPage();
-        }
+        if (pageIndex > 0) pdf.addPage();
 
         pdf.addImage(
           pageCanvas,
@@ -319,12 +227,12 @@ export async function generateQuotationPdf(
           PDF_MARGIN_MM,
           PDF_MARGIN_MM,
           usableWidth,
-          currentHeight / pixelsPerMm,
+          height / pxPerMm,
           undefined,
           "FAST"
         );
 
-        sourceY += currentHeight;
+        sourceY += height;
         pageIndex += 1;
       }
     }
