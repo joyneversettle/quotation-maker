@@ -121,9 +121,11 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
     }
   };
 
-  // Print / Save PDF
+  // Print / Save PDF - always print the clean quotation preview only.
   const handlePrint = () => {
-    window.print();
+    // Ensure A4 quotation mode is active before printing.
+    if (previewMode !== 'a4') setPreviewMode('a4');
+    window.setTimeout(() => window.print(), 80);
   };
 
   const previewBody = (
@@ -281,7 +283,7 @@ export const QuotationPreview: React.FC<QuotationPreviewProps> = ({
           className="w-full max-w-[800px] my-auto"
         >
           {/* Card Container simulating A4 sheet with subtle shadow */}
-          <div className="bg-white rounded-lg shadow-md border border-slate-300/80 overflow-hidden print:border-none print:shadow-none print:rounded-none">
+          <div className="quotation-print-sheet bg-white rounded-lg shadow-md border border-slate-300/80 overflow-hidden print:border-none print:shadow-none print:rounded-none">
             <div 
               id="quotation-html-rendered-content"
               dangerouslySetInnerHTML={{ __html: renderedHtml }}
