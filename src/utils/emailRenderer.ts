@@ -204,14 +204,27 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
       text-decoration: none !important;
     }
 
-    /* Mobile Responsive Optimizations: 360px, 390px, 412px */
+    /* Mobile Responsive Fix - preserve existing quotation design */
     @media only screen and (max-width: 520px) {
       .email-wrapper {
-        padding: 6px 4px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 6px 6px !important;
+        margin: 0 auto !important;
+      }
+      .email-wrapper > tbody > tr > td {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
       }
       .email-card {
-        padding: 12px 10px !important;
-        border-radius: 6px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 14px 12px !important;
+        margin: 0 auto !important;
+        box-sizing: border-box !important;
+      }
+      .header-col-left, .header-col-right, .grid-col, .payment-col-bank, .payment-col-qr, .footer-col-left, .footer-col-right {
+        box-sizing: border-box !important;
       }
       .header-col-left {
         display: block !important;
@@ -222,10 +235,13 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
       .header-col-right {
         display: block !important;
         width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
         text-align: left !important;
       }
       .meta-box-table {
         width: 100% !important;
+        max-width: 100% !important;
         text-align: left !important;
       }
       .meta-box-td {
@@ -237,6 +253,10 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
         padding: 0 !important;
         margin-bottom: 10px !important;
       }
+      .grid-col > table {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
       .payment-col-bank {
         display: block !important;
         width: 100% !important;
@@ -246,24 +266,40 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
       .payment-col-qr {
         display: block !important;
         width: 100% !important;
+        max-width: 100% !important;
+        padding-left: 0 !important;
         text-align: center !important;
         margin: 0 auto !important;
       }
-      .footer-col-left {
+      .payment-col-qr > table {
+        width: 140px !important;
+        max-width: 140px !important;
+        margin: 0 auto !important;
+      }
+      .footer-col-left, .footer-col-right {
         display: block !important;
         width: 100% !important;
+        padding-left: 0 !important;
         padding-right: 0 !important;
         margin-bottom: 12px !important;
-        text-align: left !important;
       }
       .footer-col-right {
-        display: block !important;
-        width: 100% !important;
         text-align: left !important;
       }
+      .tariff-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+      }
       .tariff-table th, .tariff-table td {
-        font-size: 10px !important;
-        padding: 5px 3px !important;
+        font-size: 9px !important;
+        padding: 6px 2px !important;
+        line-height: 1.25 !important;
+        box-sizing: border-box !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+      }
+      .tariff-table th {
+        white-space: nowrap !important;
       }
     }
   </style>
@@ -334,8 +370,8 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                           <td style="border-bottom: 1px solid ${borderGray}; padding-bottom: 4px;">
                             <table width="100%" cellpadding="0" cellspacing="0" border="0">
                               <tr>
-                                <td style="font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px;">PREPARED FOR</td>
-                                <td style="text-align: right;">
+                                <td style="font-size: 9px; font-weight: 800; color: ${textBlack}; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">PREPARED FOR</td>
+                                <td style="text-align: right; padding-left: 6px; white-space: nowrap;">
                                   <span style="background-color: #E2E8F0; color: ${textBlack}; font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">${data.guest.guestType}</span>
                                 </td>
                               </tr>
@@ -385,11 +421,11 @@ export function generateEmailHtml(data: QuotationData, qrDataUrl?: string): stri
                               </tr>
                               <tr>
                                 <td style="color: ${textBlack}; font-weight: 500;">Occupancy:</td>
-                                <td style="font-weight: 700; color: ${textBlack};">${data.stay.adults} Adults, ${data.stay.children} Children</td>
+                                <td style="font-weight: 700; color: ${textBlack}; white-space: nowrap;">${data.stay.adults} Adults, ${data.stay.children} Children</td>
                               </tr>
                               <tr>
                                 <td style="color: ${textBlack}; font-weight: 500;">Rooms / Plan:</td>
-                                <td style="font-weight: 700; color: ${textBlack};">${data.stay.totalRooms} Room(s) &bull; ${data.stay.mealPlan}</td>
+                                <td style="font-weight: 700; color: ${textBlack}; white-space: nowrap;">${data.stay.totalRooms} Room(s) &bull; ${data.stay.mealPlan}</td>
                               </tr>
                               ${data.stay.specialRequirement ? `
                               <tr>
