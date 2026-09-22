@@ -1,19 +1,28 @@
-import React from 'react';
-import { 
-  FileText, 
-  LayoutTemplate, 
-  FolderArchive, 
-  Settings as SettingsIcon, 
-  Printer, 
-  Mail, 
-  Copy, 
-  Save, 
-  PlusCircle, 
+import React, { useEffect, useState } from 'react';
+import {
+  FileText,
+  LayoutTemplate,
+  FolderArchive,
+  Settings as SettingsIcon,
+  Printer,
+  Mail,
+  Copy,
+  Save,
+  PlusCircle,
   Eye,
-  Menu
+  Menu,
+  Download
 } from 'lucide-react';
 
 export type ActiveTab = 'editor' | 'templates' | 'quotations' | 'settings';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+}
 
 interface NavbarProps {
   activeTab: ActiveTab;
@@ -42,11 +51,48 @@ export const Navbar: React.FC<NavbarProps> = ({
   isMobilePreviewActive,
   onToggleSidebar
 }) => {
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener(
+      'beforeinstallprompt',
+      handleBeforeInstallPrompt
+    );
+
+    return () => {
+      window.removeEventListener(
+        'beforeinstallprompt',
+        handleBeforeInstallPrompt
+      );
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+
+    await installPrompt.prompt();
+
+    const { outcome } = await installPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      setInstallPrompt(null);
+    }
+  };
+
   return (
-    <header id="app-header" className="bg-[#0B1B3D] text-white border-b border-slate-800 sticky top-0 z-[60] no-print">
+    <header
+      id="app-header"
+      className="bg-[#0B1B3D] text-white border-b border-slate-800 sticky top-0 z-[60] no-print"
+    >
       <div className="w-full px-3 sm:px-6">
         <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
-          
+
           {/* Left: Sidebar Toggle + Brand */}
           <div className="flex items-center gap-2.5 shrink-0">
             {onToggleSidebar && (
@@ -64,14 +110,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-extrabold shadow-sm">
               <FileText className="w-4 h-4" />
             </div>
-            
+
             <div>
               <div className="text-sm sm:text-base font-bold tracking-tight text-white flex items-center gap-1.5">
                 <span>Quotation Maker</span>
+
                 <span className="hidden sm:inline-block text-[9px] uppercase font-extrabold tracking-wider px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
                   Pro Resort
                 </span>
               </div>
+
               <p className="text-[10px] text-slate-400 hidden md:block">
                 Professional Hotel &amp; Resort Quotations
               </p>
@@ -79,7 +127,10 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Primary View Navigation Tabs */}
-          <nav id="main-nav" className="flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto py-1">
+          <nav
+            id="main-nav"
+            className="flex items-center space-x-1 sm:space-x-1.5 overflow-x-auto py-1"
+          >
             <button
               id="nav-tab-quotation-maker"
               onClick={() => setActiveTab('editor')}
@@ -135,9 +186,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Quick Header Actions */}
           <div className="flex items-center gap-1.5 shrink-0">
+
+            {/* Install App */}
+            {installPrompt && (
+              <button
+                id="btn-install-app"
+                type="button"
+                onClick={handleInstallApp}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+                title="Install Quotation Maker App"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Install App</span>
+              </button>
+            )}
+
             {activeTab === 'editor' && (
               <>
-                {/* Prominent Preview button requested by user */}
+                {/* Preview */}
                 <button
                   id="btn-navbar-preview"
                   type="button"
@@ -149,6 +215,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Preview</span>
                 </button>
 
+                {/* Save */}
                 <button
                   id="btn-save-quotation-header"
                   type="button"
@@ -160,6 +227,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="hidden sm:inline">Save</span>
                 </button>
 
+                {/* Email HTML */}
                 <button
                   id="btn-copy-email-header"
                   type="button"
@@ -171,6 +239,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="hidden md:inline">Email HTML</span>
                 </button>
 
+                {/* Print / PDF */}
                 <button
                   id="btn-print-pdf-header"
                   type="button"
@@ -182,6 +251,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="hidden md:inline">Print / PDF</span>
                 </button>
 
+                {/* New Quotation */}
                 <button
                   id="btn-new-quotation-header"
                   type="button"
