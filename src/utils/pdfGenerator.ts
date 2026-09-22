@@ -7,93 +7,81 @@ const A4_HEIGHT_MM = 297;
 const PDF_MARGIN_MM = 4;
 
 /**
- * Resolve browser-supported color functions to RGB once in the real document.
- * html2canvas can then use the same visual colors without parsing oklch/oklab.
+ * Find complete CSS function expressions, including nested functions such as
+ * color-mix(... oklch(...) ...). A simple single-level regex is not sufficient
+ * for Tailwind v4 generated CSS.
  */
-function buildColorMap(): Map<string, string> {
-  const map = new Map<string, string>();
-  const sourceTexts: string[] = [];
+function findCssFunctionExpressions(
+  css: string,
+  names: readonly string[]
+): string[] {
+  const found: string[] = [];
+  const namePattern = names.join("|");
+  const startPattern = new RegExp(`(?:${namePattern})\\(`, "gi");
 
-  document.querySelectorAll("style").forEach((style) => {
-    if (style.textContent) sourceTexts.push(style.textContent);
-  });
+  let match: RegExpExecArray | null;
+  while ((match = startPattern.exec(css))) {
+    const start = match.index;
+    const open = css.indexOf("(", start);
+    if (open < 0) continue;
 
-  const html = document.documentElement.outerHTML;
-  sourceTexts.push(html);
+    let depth = 0;
+    let quote: string | null = null;
 
-  const matches =
-    sourceTexts.join("\n").match(/(?:oklch|oklab|color)\([^)]*\)/gi) || [];
+    for (let i = open; i < css.length; i += 1) {
+      const char = css[i];
 
-  if (!matches.length) return map;
+      if (quote) {
+        if (char === quote && css[i - 1] !== "\\") quote = null;
+        continue;
+      }
 
-  const probe = document.createElement("span");
-  probe.style.position = "fixed";
-  probe.style.left = "-10000px";
-  probe.style.top = "0";
-  probe.style.width = "1px";
-  probe.style.height = "1px";
-  probe.style.pointerEvents = "none";
-  probe.style.visibility = "hidden";
-  document.body.appendChild(probe);
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
 
-  try {
-    for (const token of new Set(matches)) {
-      probe.style.color = "";
-      probe.style.color = token;
+      if (char === "(") depth += 1;
+      if (char === ")") depth -= 1;
 
-      const resolved = window.getComputedStyle(probe).color;
-
-      if (resolved && !/(oklch|oklab|color\()/i.test(resolved)) {
-        map.set(token, resolved);
-      } else {
-        map.set(token, "#000000");
+      if (depth === 0) {
+        found.push(css.slice(start, i + 1));
+        startPattern.lastIndex = i + 1;
+        break;
       }
     }
-  } finally {
-    probe.remove();
   }
 
-  return map;
+  return found;
 }
 
-function replaceUnsupportedColors(
-  cssText: string,
-  colorMap: Map<string, string>
+function replaceCssFunctions(
+  css: string,
+  resolver: (token: string) => string | undefined
 ): string {
-  return cssText.replace(
-    /(?:oklch|oklab|color)\([^)]*\)/gi,
-    (token) => colorMap.get(token) || "#000000"
+  const targets = findCssFunctionExpressions(css, [
+    "oklch",
+    "oklab",
+    "color-mix",
+    "color",
+  ]);
+
+  let output = css;
+  const unique = Array.from(new Set(targets)).sort(
+    (a, b) => b.length - a.length
   );
+
+  for (const token of unique) {
+    const replacement = resolver(token);
+    if (replacement && replacement !== token) {
+      output = output.split(token).join(replacement);
+    }
+  }
+
+  return output;
 }
 
-function sanitizeClonedStyles(
-  clonedDocument: Document,
-  colorMap: Map<string, string>
-): void {
-  // Preserve ALL application CSS. Only replace unsupported color functions.
-  clonedDocument.querySelectorAll("style").forEach((style) => {
-    if (style.textContent) {
-      style.textContent = replaceUnsupportedColors(
-        style.textContent,
-        colorMap
-      );
-    }
-  });
-
-  // Sanitize inline style attributes without removing any other styling.
-  clonedDocument.querySelectorAll<HTMLElement>("[style]").forEach((element) => {
-    const value = element.getAttribute("style");
-
-    if (value && /(?:oklch|oklab|color)\(/i.test(value)) {
-      element.setAttribute(
-        "style",
-        replaceUnsupportedColors(value, colorMap)
-      );
-    }
-  });
-}
-
-function resolveColorToken(token: string): string | null {
+function resolveCssColor(token: string): string | undefined {
   const probe = document.createElement("span");
   probe.style.position = "fixed";
   probe.style.left = "-10000px";
@@ -105,184 +93,96 @@ function resolveColorToken(token: string): string | null {
   document.body.appendChild(probe);
 
   try {
+    probe.style.color = "";
     probe.style.color = token;
 
     const resolved = window.getComputedStyle(probe).color;
+    if (!resolved || /(?:oklch|oklab|color-mix|color\()/i.test(resolved)) {
+      return undefined;
+    }
 
-    return resolved &&
-      !/(oklch|oklab|color-mix|color\()/i.test(resolved)
-      ? resolved
-      : null;
+    return resolved;
   } finally {
     probe.remove();
   }
 }
 
-function sanitizeComputedColors(root: HTMLElement): void {
-  /*
-   * html2canvas reads computed styles from the cloned document.
-   *
-   * Tailwind CSS v4 can leave OKLCH/OKLAB color functions in those
-   * computed values even after stylesheet text has been rewritten.
-   *
-   * Convert only color-bearing properties in the temporary PDF clone.
-   * The actual application DOM is never modified.
-   */
-  const colorProperties = [
-    "color",
-    "backgroundColor",
-    "borderTopColor",
-    "borderRightColor",
-    "borderBottomColor",
-    "borderLeftColor",
-    "outlineColor",
-    "columnRuleColor",
-    "textDecorationColor",
-    "fill",
-    "stroke",
-    "caretColor",
-    "accentColor",
-  ] as const;
+function collectSameOriginCss(): string {
+  const cssParts: string[] = [];
 
-  const elements = [
-    root,
-    ...Array.from(root.querySelectorAll<HTMLElement>("*")),
-  ];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      const rules = sheet.cssRules;
+      if (!rules) continue;
 
-  for (const element of elements) {
-    const computed = window.getComputedStyle(element);
-
-    for (const property of colorProperties) {
-      const value = computed[property];
-
-      if (
-        !value ||
-        !/(oklch|oklab|color-mix|color\()/i.test(value)
-      ) {
-        continue;
+      for (const rule of Array.from(rules)) {
+        cssParts.push(rule.cssText);
       }
-
-      const resolved = resolveColorToken(value);
-
-      if (resolved) {
-        element.style.setProperty(
-          property.replace(
-            /[A-Z]/g,
-            (letter) => `-${letter.toLowerCase()}`
-          ),
-          resolved
-        );
-      }
-    }
-
-    /*
-     * Gradients/shadows can contain OKLCH/OKLAB stops even when normal
-     * color properties are already RGB.
-     */
-    for (const property of [
-      "backgroundImage",
-      "boxShadow",
-      "textShadow",
-    ] as const) {
-      const value = computed[property];
-
-      if (
-        !value ||
-        !/(oklch|oklab|color-mix|color\()/i.test(value)
-      ) {
-        continue;
-      }
-
-      const converted = value.replace(
-        /(?:oklch|oklab|color)\([^)]*\)/gi,
-        (token) => resolveColorToken(token) || token
-      );
-
-      if (
-        converted !== value &&
-        !/(oklch|oklab|color-mix|color\()/i.test(converted)
-      ) {
-        element.style.setProperty(
-          property.replace(
-            /[A-Z]/g,
-            (letter) => `-${letter.toLowerCase()}`
-          ),
-          converted
-        );
-      }
+    } catch {
+      // Cross-origin stylesheets cannot expose cssRules. Keep their original
+      // link in place; html2canvas can normally use them when no unsupported
+      // color function is present.
     }
   }
+
+  return cssParts.join("\n");
 }
 
-function getSafePageBreaks(
-  root: HTMLElement,
-  pageHeightPx: number
-): number[] {
-  const template = root.querySelector<HTMLElement>(
-    ".quotation-template"
-  );
+function buildSanitizedPdfCss(): string {
+  const css = collectSameOriginCss();
 
-  if (!template) return [];
+  if (!css) return "";
 
-  const rootRect = root.getBoundingClientRect();
-  const templateRect = template.getBoundingClientRect();
-
-  const offsetY = templateRect.top - rootRect.top;
-
-  const breaks = new Set<number>();
-
-  /*
-   * The built-in quotation templates place their major quotation
-   * sections as direct children of .quotation-template.
-   */
-  const sections = Array.from(template.children) as HTMLElement[];
-
-  for (const section of sections) {
-    const rect = section.getBoundingClientRect();
-
-    const bottom = Math.round(
-      rect.bottom - rootRect.top
-    );
-
-    if (bottom > 0 && bottom < root.scrollHeight) {
-      breaks.add(bottom);
+  return replaceCssFunctions(css, (token) => {
+    if (/^color-mix\(/i.test(token)) {
+      // color-mix can contain nested oklch/oklab values. First resolve the
+      // complete expression in the browser if possible.
+      return resolveCssColor(token);
     }
+
+    return resolveCssColor(token);
+  });
+}
+
+function sanitizeClonedDocument(
+  clonedDocument: Document,
+  sanitizedCss: string
+): void {
+  if (sanitizedCss) {
+    // Disable same-origin stylesheet links in the clone. Their CSS is copied
+    // below after unsupported color functions have been converted to RGB.
+    clonedDocument
+      .querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')
+      .forEach((link) => {
+        link.disabled = true;
+      });
+
+    const style = clonedDocument.createElement("style");
+    style.setAttribute("data-pdf-sanitized-css", "true");
+    style.textContent = sanitizedCss;
+    clonedDocument.head.appendChild(style);
   }
 
-  /*
-   * Also allow explicit safe-break descendants for templates that
-   * wrap multiple sections inside another container.
-   */
-  for (const element of Array.from(
-    template.querySelectorAll<HTMLElement>(
-      ".page-break-inside-avoid, [data-pdf-break], .mobile-note-card"
-    )
-  )) {
-    const rect = element.getBoundingClientRect();
+  // The quotation HTML can contain inline styles as well.
+  clonedDocument
+    .querySelectorAll<HTMLElement>("[style]")
+    .forEach((element) => {
+      const value = element.getAttribute("style");
+      if (!value) return;
 
-    const bottom = Math.round(
-      rect.bottom - rootRect.top
-    );
+      const converted = replaceCssFunctions(
+        value,
+        (token) => resolveCssColor(token)
+      );
 
-    if (
-      bottom > offsetY &&
-      bottom < root.scrollHeight
-    ) {
-      breaks.add(bottom);
-    }
-  }
-
-  return Array.from(breaks)
-    .sort((a, b) => a - b)
-    .filter(
-      (value) => value > pageHeightPx * 0.15
-    );
+      if (converted !== value) {
+        element.setAttribute("style", converted);
+      }
+    });
 }
 
 function waitForImages(root: HTMLElement): Promise<void> {
-  const images = Array.from(
-    root.querySelectorAll("img")
-  );
+  const images = Array.from(root.querySelectorAll("img"));
 
   return Promise.all(
     images.map(
@@ -294,23 +194,9 @@ function waitForImages(root: HTMLElement): Promise<void> {
           }
 
           const finish = () => resolve();
-
-          img.addEventListener(
-            "load",
-            finish,
-            { once: true }
-          );
-
-          img.addEventListener(
-            "error",
-            finish,
-            { once: true }
-          );
-
-          window.setTimeout(
-            finish,
-            10000
-          );
+          img.addEventListener("load", finish, { once: true });
+          img.addEventListener("error", finish, { once: true });
+          window.setTimeout(finish, 10000);
         })
     )
   ).then(() => undefined);
@@ -322,27 +208,16 @@ function createCanvasSlice(
   height: number
 ): HTMLCanvasElement {
   const slice = document.createElement("canvas");
-
   slice.width = source.width;
   slice.height = height;
 
   const context = slice.getContext("2d");
-
   if (!context) {
-    throw new Error(
-      "Unable to create PDF page canvas."
-    );
+    throw new Error("Unable to create PDF page canvas.");
   }
 
   context.fillStyle = "#ffffff";
-
-  context.fillRect(
-    0,
-    0,
-    slice.width,
-    slice.height
-  );
-
+  context.fillRect(0, 0, slice.width, slice.height);
   context.drawImage(
     source,
     0,
@@ -358,32 +233,14 @@ function createCanvasSlice(
   return slice;
 }
 
-export async function generateQuotationPdf(
-  html: string,
-  fileName = "quotation.pdf"
-): Promise<void> {
-  if (!html || !html.trim()) {
-    throw new Error(
-      "Quotation HTML is empty."
-    );
-  }
-
-  /*
-   * Resolve colors while the browser still understands
-   * oklch/oklab.
-   */
-  const colorMap = buildColorMap();
-
-  const container =
-    document.createElement("div");
-
+function createPdfRenderRoot(html: string): HTMLElement {
+  const container = document.createElement("div");
+  container.id = "quotation-pdf-render-root";
   container.style.position = "fixed";
   container.style.left = "-10000px";
   container.style.top = "0";
-  container.style.width =
-    `${RENDER_WIDTH_PX}px`;
-  container.style.maxWidth =
-    `${RENDER_WIDTH_PX}px`;
+  container.style.width = `${RENDER_WIDTH_PX}px`;
+  container.style.maxWidth = `${RENDER_WIDTH_PX}px`;
   container.style.margin = "0";
   container.style.padding = "0";
   container.style.background = "#ffffff";
@@ -394,14 +251,7 @@ export async function generateQuotationPdf(
 
   container.innerHTML = html;
 
-  /*
-   * PDF-only alignment/width rules.
-   *
-   * The quotation content/design itself is untouched.
-   */
-  const pdfRules =
-    document.createElement("style");
-
+  const pdfRules = document.createElement("style");
   pdfRules.textContent = `
     #quotation-pdf-render-root {
       width: ${RENDER_WIDTH_PX}px !important;
@@ -433,109 +283,101 @@ export async function generateQuotationPdf(
     }
   `;
 
-  container.id =
-    "quotation-pdf-render-root";
-
   container.prepend(pdfRules);
-
   document.body.appendChild(container);
+  return container;
+}
+
+async function renderCanvas(
+  container: HTMLElement,
+  sanitizedCss: string,
+  foreignObjectRendering: boolean
+): Promise<HTMLCanvasElement> {
+  return html2canvas(container, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: false,
+    backgroundColor: "#ffffff",
+    logging: false,
+    imageTimeout: 10000,
+    width: RENDER_WIDTH_PX,
+    windowWidth: RENDER_WIDTH_PX,
+    scrollX: 0,
+    scrollY: 0,
+    foreignObjectRendering,
+    onclone: (clonedDocument) => {
+      const clonedRoot = clonedDocument.getElementById(
+        "quotation-pdf-render-root"
+      );
+
+      if (!clonedRoot) return;
+
+      clonedRoot.style.width = `${RENDER_WIDTH_PX}px`;
+      clonedRoot.style.maxWidth = `${RENDER_WIDTH_PX}px`;
+      clonedRoot.style.margin = "0";
+      clonedRoot.style.padding = "0";
+
+      const template = clonedRoot.querySelector(
+        ".quotation-template"
+      ) as HTMLElement | null;
+
+      if (template) {
+        template.style.width = "100%";
+        template.style.maxWidth = "100%";
+        template.style.marginLeft = "0";
+        template.style.marginRight = "0";
+      }
+
+      // The normal html2canvas renderer has its own CSS parser. Use the
+      // browser-native foreignObject renderer first; if that fails, the
+      // fallback receives a CSS copy with all unsupported color functions
+      // converted to browser-resolved RGB values.
+      if (!foreignObjectRendering) {
+        sanitizeClonedDocument(clonedDocument, sanitizedCss);
+      }
+    },
+  });
+}
+
+export async function generateQuotationPdf(
+  html: string,
+  fileName = "quotation.pdf"
+): Promise<void> {
+  if (!html || !html.trim()) {
+    throw new Error("Quotation HTML is empty.");
+  }
+
+  const container = createPdfRenderRoot(html);
 
   try {
     await document.fonts.ready;
-
     await waitForImages(container);
 
-    await new Promise<void>(
-      (resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(
-            () => resolve()
-          );
-        });
-      }
-    );
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
 
-    const canvas =
-      await html2canvas(
-        container,
-        {
-          scale: 2,
-          useCORS: true,
-          allowTaint: false,
-          backgroundColor: "#ffffff",
-          logging: false,
-          imageTimeout: 10000,
-          width: RENDER_WIDTH_PX,
-          windowWidth: RENDER_WIDTH_PX,
-          scrollX: 0,
-          scrollY: 0,
+    let canvas: HTMLCanvasElement;
 
-          onclone: (
-            clonedDocument
-          ) => {
-            /*
-             * Keep all application CSS intact.
-             * Only convert unsupported color functions.
-             */
-            sanitizeClonedStyles(
-              clonedDocument,
-              colorMap
-            );
-
-            const clonedRoot =
-              clonedDocument.getElementById(
-                "quotation-pdf-render-root"
-              );
-
-            if (clonedRoot) {
-              clonedRoot.style.width =
-                `${RENDER_WIDTH_PX}px`;
-
-              clonedRoot.style.maxWidth =
-                `${RENDER_WIDTH_PX}px`;
-
-              clonedRoot.style.margin =
-                "0";
-
-              clonedRoot.style.padding =
-                "0";
-
-              const template =
-                clonedRoot.querySelector<HTMLElement>(
-                  ".quotation-template"
-                );
-
-              if (template) {
-                template.style.width =
-                  "100%";
-
-                template.style.maxWidth =
-                  "100%";
-
-                template.style.marginLeft =
-                  "0";
-
-                template.style.marginRight =
-                  "0";
-              }
-
-              /*
-               * Critical fix:
-               * normalize the actual computed color values
-               * that html2canvas reads.
-               */
-              sanitizeComputedColors(
-                clonedRoot
-              );
-            }
-          },
-        }
+    try {
+      // This is the preferred path. The browser itself renders the existing
+      // quotation CSS, so Tailwind v4's oklch/oklab never reaches html2canvas's
+      // legacy CSS color parser.
+      canvas = await renderCanvas(container, "", true);
+    } catch (foreignObjectError) {
+      console.warn(
+        "PDF foreignObject rendering failed; using sanitized canvas fallback.",
+        foreignObjectError
       );
+
+      const sanitizedCss = buildSanitizedPdfCss();
+      canvas = await renderCanvas(container, sanitizedCss, false);
+    }
 
     if (!canvas.width || !canvas.height) {
-      throw new Error(
-        "Quotation could not be rendered."
-      );
+      throw new Error("Quotation could not be rendered.");
     }
 
     const pdf = new jsPDF({
@@ -545,132 +387,52 @@ export async function generateQuotationPdf(
       compress: true,
     });
 
-    const usableWidth =
-      A4_WIDTH_MM -
-      PDF_MARGIN_MM * 2;
+    const usableWidth = A4_WIDTH_MM - PDF_MARGIN_MM * 2;
+    const usableHeight = A4_HEIGHT_MM - PDF_MARGIN_MM * 2;
+    const pixelsPerMm = canvas.width / usableWidth;
+    const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
 
-    const usableHeight =
-      A4_HEIGHT_MM -
-      PDF_MARGIN_MM * 2;
+    let sourceY = 0;
+    let pageIndex = 0;
 
-    const pixelsPerMm =
-      canvas.width / usableWidth;
+    while (sourceY < canvas.height) {
+      const currentHeight = Math.min(
+        pageHeightPx,
+        canvas.height - sourceY
+      );
 
-    const fullHeightMm =
-      canvas.height / pixelsPerMm;
-
-    /*
-     * Single-page quotation.
-     */
-    if (
-      fullHeightMm <= usableHeight
-    ) {
-      pdf.addImage(
+      const pageCanvas = createCanvasSlice(
         canvas,
+        sourceY,
+        currentHeight
+      );
+
+      if (pageIndex > 0) {
+        pdf.addPage();
+      }
+
+      pdf.addImage(
+        pageCanvas,
         "PNG",
         PDF_MARGIN_MM,
         PDF_MARGIN_MM,
         usableWidth,
-        fullHeightMm,
+        currentHeight / pixelsPerMm,
         undefined,
         "FAST"
       );
-    } else {
-      /*
-       * Multi-page quotation.
-       *
-       * Prefer natural quotation-section boundaries
-       * instead of cutting directly through cards.
-       */
-      const pageHeightPx =
-        Math.floor(
-          usableHeight *
-            pixelsPerMm
-        );
 
-      const safeBreaks =
-        getSafePageBreaks(
-          container,
-          pageHeightPx
-        );
-
-      let sourceY = 0;
-      let pageIndex = 0;
-
-      while (
-        sourceY < canvas.height
-      ) {
-        const targetY =
-          Math.min(
-            sourceY +
-              pageHeightPx,
-            canvas.height
-          );
-
-        const nextSafeBreak =
-          safeBreaks
-            .filter(
-              (breakY) =>
-                breakY > sourceY &&
-                breakY <= targetY
-            )
-            .pop();
-
-        const endY =
-          nextSafeBreak ??
-          targetY;
-
-        const currentHeight =
-          Math.max(
-            1,
-            Math.min(
-              endY - sourceY,
-              canvas.height -
-                sourceY
-            )
-          );
-
-        const pageCanvas =
-          createCanvasSlice(
-            canvas,
-            sourceY,
-            currentHeight
-          );
-
-        if (pageIndex > 0) {
-          pdf.addPage();
-        }
-
-        pdf.addImage(
-          pageCanvas,
-          "PNG",
-          PDF_MARGIN_MM,
-          PDF_MARGIN_MM,
-          usableWidth,
-          currentHeight /
-            pixelsPerMm,
-          undefined,
-          "FAST"
-        );
-
-        sourceY += currentHeight;
-        pageIndex += 1;
-      }
+      sourceY += currentHeight;
+      pageIndex += 1;
     }
 
     const safeFileName =
       fileName
-        .replace(
-          /[<>:"/\\|?*\x00-\x1F]/g,
-          "-"
-        )
-        .trim() ||
-      "quotation";
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
+        .trim() || "quotation";
 
     pdf.save(
-      safeFileName
-        .toLowerCase()
-        .endsWith(".pdf")
+      safeFileName.toLowerCase().endsWith(".pdf")
         ? safeFileName
         : `${safeFileName}.pdf`
     );
