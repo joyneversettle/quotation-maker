@@ -77,7 +77,8 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
 
       <input
         {...inputProps}
-        type="number"
+        type="text"
+        inputMode="decimal"
         value={value}
         min={min}
         max={max}
@@ -85,10 +86,6 @@ export const NumberStepper: React.FC<NumberStepperProps> = ({
         disabled={disabled}
         onChange={onChange}
         className={`${className} !min-w-0 !rounded-none !border-0 flex-1`}
-        style={{
-          WebkitAppearance: 'none',
-          MozAppearance: 'textfield',
-        }}
       />
 
       <button
