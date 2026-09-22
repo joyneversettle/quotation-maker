@@ -1,366 +1,231 @@
-import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-const RENDER_WIDTH_PX = 794;
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const PDF_MARGIN_MM = 4;
-const STYLE_ID_ATTR = "data-pdf-style-id";
+const RENDER_WIDTH_PX = 794;
 
-/**
- * html2canvas 1.4.x has its own CSS parser and does not understand the
- * OKLCH/OKLAB colors emitted by Tailwind CSS v4. The live quotation must
- * keep its existing CSS, so the PDF renderer creates a temporary copy and
- * converts that copy to computed, browser-resolved styles only.
- */
-function snapshotComputedStyles(root: HTMLElement): {
-  elementStyles: Array<{ id: string; cssText: string }>;
-  pseudoStyles: string[];
-} {
-  const elementStyles: Array<{ id: string; cssText: string }> = [];
-  const pseudoStyles: string[] = [];
-
-  const elements = [
-    root,
-    ...Array.from(root.querySelectorAll<HTMLElement>("*")),
-  ];
-
-  elements.forEach((element, index) => {
-    const id = String(index);
-    element.setAttribute(STYLE_ID_ATTR, id);
-
-    const computed = window.getComputedStyle(element);
-    const inline = document.createElement("div").style;
-
-    for (let i = 0; i < computed.length; i += 1) {
-      const property = computed.item(i);
-      const value = computed.getPropertyValue(property);
-
-      if (!property || !value) continue;
-
-      // Setting the value through the browser CSSOM guarantees that any
-      // color function is resolved/validated by the browser rather than
-      // being handed to html2canvas's CSS parser as raw authored CSS.
-      inline.setProperty(
-        property,
-        resolveUnsupportedColorValue(value),
-        computed.getPropertyPriority(property)
-      );
-    }
-
-    elementStyles.push({
-      id,
-      cssText: inline.cssText,
-    });
-
-    for (const pseudo of ["::before", "::after"]) {
-      const pseudoComputed = window.getComputedStyle(
-        element,
-        pseudo
-      );
-
-      const content = pseudoComputed.getPropertyValue("content");
-
-      if (!content || content === "none" || content === '""') {
-        continue;
-      }
-
-      const pseudoStyle = document.createElement("div").style;
-
-      for (let i = 0; i < pseudoComputed.length; i += 1) {
-        const property = pseudoComputed.item(i);
-        const value = pseudoComputed.getPropertyValue(property);
-
-        if (!property || !value) continue;
-
-        pseudoStyle.setProperty(
-          property,
-          resolveUnsupportedColorValue(value),
-          pseudoComputed.getPropertyPriority(property)
-        );
-      }
-
-      pseudoStyles.push(
-        `[${STYLE_ID_ATTR}="${id}"]${pseudo}{${pseudoStyle.cssText}}`
-      );
-    }
-  });
-
-  return { elementStyles, pseudoStyles };
-}
-
-function resolveUnsupportedColorValue(value: string): string {
-  if (!/(oklch|oklab|color-mix|color\()/i.test(value)) {
-    return value;
-  }
-
-  const probe = document.createElement("span");
-  probe.style.position = "fixed";
-  probe.style.left = "-10000px";
-  probe.style.top = "0";
-  probe.style.width = "1px";
-  probe.style.height = "1px";
-  probe.style.visibility = "hidden";
-  probe.style.pointerEvents = "none";
-  document.body.appendChild(probe);
-
-  try {
-    // Color-bearing properties need a browser color parser. For composite
-    // values such as gradients/shadows, resolve each individual color token.
-    if (/^(?:oklch|oklab|color-mix|color)\(/i.test(value.trim())) {
-      probe.style.color = value;
-      const resolved = window.getComputedStyle(probe).color;
-
-      if (resolved && !/(oklch|oklab|color-mix|color\()/i.test(resolved)) {
-        return resolved;
-      }
-    }
-
-    return value.replace(
-      /(?:oklch|oklab|color-mix|color)\([^()]*\)/gi,
-      (token) => {
-        probe.style.color = "";
-        probe.style.color = token;
-
-        const resolved = window.getComputedStyle(probe).color;
-
-        return resolved && !/(oklch|oklab|color-mix|color\()/i.test(resolved)
-          ? resolved
-          : "transparent";
-      }
-    );
-  } finally {
-    probe.remove();
-  }
-}
-
-function applySnapshotToClone(
-  clonedDocument: Document,
-  snapshot: ReturnType<typeof snapshotComputedStyles>
-): void {
-  for (const item of snapshot.elementStyles) {
-    const element = clonedDocument.querySelector<HTMLElement>(
-      `[${STYLE_ID_ATTR}="${item.id}"]`
-    );
-
-    if (!element) continue;
-
-    element.setAttribute("style", item.cssText);
-  }
-
-  // Remove the application's stylesheets from the temporary clone. At this
-  // point every normal element has its computed appearance inlined, so the
-  // Tailwind v4 stylesheet no longer needs to be parsed by html2canvas.
-  clonedDocument
-    .querySelectorAll("style, link[rel~='stylesheet']")
-    .forEach((node) => node.remove());
-
-  if (snapshot.pseudoStyles.length) {
-    const pseudoStyle = clonedDocument.createElement("style");
-    pseudoStyle.textContent = snapshot.pseudoStyles.join("\n");
-    clonedDocument.head.appendChild(pseudoStyle);
-  }
+function waitForFonts(): Promise<void> {
+  if (!document.fonts?.ready) return Promise.resolve();
+  return document.fonts.ready.then(() => undefined);
 }
 
 function waitForImages(root: HTMLElement): Promise<void> {
   const images = Array.from(root.querySelectorAll("img"));
-
-  return Promise.all(
-    images.map(
-      (img) =>
-        new Promise<void>((resolve) => {
-          if (img.complete) {
-            resolve();
-            return;
-          }
-
-          const finish = () => resolve();
-          img.addEventListener("load", finish, { once: true });
-          img.addEventListener("error", finish, { once: true });
-          window.setTimeout(finish, 10000);
-        })
-    )
-  ).then(() => undefined);
+  return Promise.all(images.map((img) => new Promise<void>((resolve) => {
+    if (img.complete) return resolve();
+    const done = () => resolve();
+    img.addEventListener("load", done, { once: true });
+    img.addEventListener("error", done, { once: true });
+    window.setTimeout(done, 10000);
+  }))).then(() => undefined);
 }
 
-function createCanvasSlice(
-  source: HTMLCanvasElement,
-  sourceY: number,
-  height: number
-): HTMLCanvasElement {
-  const slice = document.createElement("canvas");
-  slice.width = source.width;
-  slice.height = height;
-
-  const context = slice.getContext("2d");
-
-  if (!context) {
-    throw new Error("Unable to create PDF page canvas.");
+function copyComputedStyles(source: HTMLElement, target: HTMLElement): void {
+  const computed = window.getComputedStyle(source);
+  for (let i = 0; i < computed.length; i += 1) {
+    const property = computed.item(i);
+    const value = computed.getPropertyValue(property);
+    const priority = computed.getPropertyPriority(property);
+    if (value) target.style.setProperty(property, value, priority);
   }
 
+  // The PDF clone must have a deterministic box model and no responsive
+  // stylesheet left for the renderer to parse.
+  target.style.setProperty("box-sizing", "border-box");
+}
+
+function inlineComputedStyles(source: HTMLElement, target: HTMLElement): void {
+  copyComputedStyles(source, target);
+  const sourceChildren = Array.from(source.children);
+  const targetChildren = Array.from(target.children) as HTMLElement[];
+
+  for (let i = 0; i < sourceChildren.length; i += 1) {
+    const sourceChild = sourceChildren[i];
+    const targetChild = targetChildren[i];
+    if (sourceChild instanceof HTMLElement && targetChild instanceof HTMLElement) {
+      inlineComputedStyles(sourceChild, targetChild);
+    }
+  }
+}
+
+async function imageToDataUrl(src: string): Promise<string | null> {
+  if (!src || src.startsWith("data:") || src.startsWith("blob:")) return src || null;
+
+  try {
+    const response = await fetch(src, { mode: "cors", credentials: "omit" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function inlineImages(root: HTMLElement): Promise<void> {
+  const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(images.map(async (img) => {
+    const src = img.getAttribute("src");
+    if (!src) return;
+    const dataUrl = await imageToDataUrl(new URL(src, document.baseURI).href);
+    if (dataUrl) img.setAttribute("src", dataUrl);
+  }));
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+async function renderDomToCanvas(root: HTMLElement): Promise<HTMLCanvasElement> {
+  await waitForFonts();
+  await waitForImages(root);
+  await inlineImages(root);
+
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("id");
+  clone.style.position = "static";
+  clone.style.left = "auto";
+  clone.style.top = "auto";
+  clone.style.width = `${RENDER_WIDTH_PX}px`;
+  clone.style.maxWidth = `${RENDER_WIDTH_PX}px`;
+  clone.style.margin = "0";
+  clone.style.background = "#ffffff";
+  clone.style.overflow = "visible";
+
+  // Inline the browser's already-resolved RGB colors and all other computed
+  // presentation values. No Tailwind stylesheet is passed to the PDF renderer.
+  inlineComputedStyles(root, clone);
+  clone.style.width = `${RENDER_WIDTH_PX}px`;
+  clone.style.maxWidth = `${RENDER_WIDTH_PX}px`;
+  clone.style.margin = "0";
+  clone.style.background = "#ffffff";
+
+  // Remove every stylesheet/link from the cloned document. This is the key
+  // compatibility fix: html2canvas is no longer used to parse Tailwind v4's
+  // oklch() CSS at all.
+  clone.querySelectorAll("style, link[rel~='stylesheet']").forEach((node) => node.remove());
+
+  const width = RENDER_WIDTH_PX;
+  const height = Math.max(1, root.scrollHeight);
+  clone.style.height = `${height}px`;
+
+  const serialized = new XMLSerializer().serializeToString(clone);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xhtml="http://www.w3.org/1999/xhtml" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<foreignObject x="0" y="0" width="${width}" height="${height}">${serialized}</foreignObject>` +
+    `</svg>`;
+
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = url;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("The quotation could not be rendered for PDF export."));
+    });
+
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(width * scale);
+    canvas.height = Math.ceil(height * scale);
+
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Unable to create PDF rendering canvas.");
+
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    context.drawImage(image, 0, 0, width, height);
+
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function createCanvasSlice(source: HTMLCanvasElement, sourceY: number, height: number): HTMLCanvasElement {
+  const slice = document.createElement("canvas");
+  slice.width = source.width;
+  slice.height = Math.max(1, Math.floor(height));
+  const context = slice.getContext("2d");
+  if (!context) throw new Error("Unable to create PDF page canvas.");
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, slice.width, slice.height);
-  context.drawImage(
-    source,
-    0,
-    sourceY,
-    source.width,
-    height,
-    0,
-    0,
-    source.width,
-    height
-  );
-
+  context.drawImage(source, 0, sourceY, source.width, height, 0, 0, source.width, height);
   return slice;
 }
 
-export async function generateQuotationPdf(
-  html: string,
-  fileName = "quotation.pdf"
-): Promise<void> {
-  if (!html || !html.trim()) {
-    throw new Error("Quotation HTML is empty.");
-  }
+export async function generateQuotationPdf(html: string, fileName = "quotation.pdf"): Promise<void> {
+  if (!html.trim()) throw new Error("Quotation HTML is empty.");
 
   const container = document.createElement("div");
   container.style.position = "fixed";
-  container.style.left = "-10000px";
+  container.style.left = "-100000px";
   container.style.top = "0";
   container.style.width = `${RENDER_WIDTH_PX}px`;
   container.style.maxWidth = `${RENDER_WIDTH_PX}px`;
   container.style.margin = "0";
   container.style.padding = "0";
   container.style.background = "#ffffff";
-  container.style.visibility = "visible";
   container.style.pointerEvents = "none";
-  container.style.zIndex = "-999999";
-  container.style.overflow = "visible";
-
+  container.style.visibility = "visible";
   container.innerHTML = html;
   document.body.appendChild(container);
 
   try {
-    await document.fonts.ready;
-    await waitForImages(container);
-
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resolve);
-      });
-    });
-
-    /*
-     * Capture the browser's final visual result BEFORE html2canvas clones
-     * the DOM. This is the critical compatibility step: Tailwind v4 may
-     * contain oklch() in authored CSS, but the browser has already resolved
-     * the visual styles here.
-     */
-    const snapshot = snapshotComputedStyles(container);
-
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: "#ffffff",
-      logging: false,
-      imageTimeout: 10000,
-      width: RENDER_WIDTH_PX,
-      windowWidth: RENDER_WIDTH_PX,
-      scrollX: 0,
-      scrollY: 0,
-      foreignObjectRendering: true,
-      onclone: (clonedDocument) => {
-        applySnapshotToClone(clonedDocument, snapshot);
-
-        const clonedRoot = clonedDocument.querySelector<HTMLElement>(
-          `[${STYLE_ID_ATTR}="0"]`
-        );
-
-        if (clonedRoot) {
-          clonedRoot.style.width = `${RENDER_WIDTH_PX}px`;
-          clonedRoot.style.maxWidth = `${RENDER_WIDTH_PX}px`;
-          clonedRoot.style.margin = "0";
-          clonedRoot.style.padding = "0";
-          clonedRoot.style.background = "#ffffff";
-        }
-      },
-    });
-
-    if (!canvas.width || !canvas.height) {
-      throw new Error("Quotation could not be rendered.");
+    const template = container.querySelector<HTMLElement>(".quotation-template");
+    if (template) {
+      template.style.width = "100%";
+      template.style.maxWidth = "100%";
+      template.style.marginLeft = "0";
+      template.style.marginRight = "0";
     }
 
-    const pdf = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-      compress: true,
-    });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
+    const canvas = await renderDomToCanvas(container);
     const usableWidth = A4_WIDTH_MM - PDF_MARGIN_MM * 2;
     const usableHeight = A4_HEIGHT_MM - PDF_MARGIN_MM * 2;
     const pixelsPerMm = canvas.width / usableWidth;
-    const fullHeightMm = canvas.height / pixelsPerMm;
+    const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
 
-    if (fullHeightMm <= usableHeight) {
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4", compress: true });
+
+    let sourceY = 0;
+    let pageIndex = 0;
+    while (sourceY < canvas.height) {
+      const currentHeight = Math.min(pageHeightPx, canvas.height - sourceY);
+      const pageCanvas = createCanvasSlice(canvas, sourceY, currentHeight);
+      if (pageIndex > 0) pdf.addPage();
       pdf.addImage(
-        canvas,
+        pageCanvas,
         "PNG",
         PDF_MARGIN_MM,
         PDF_MARGIN_MM,
         usableWidth,
-        fullHeightMm,
+        currentHeight / pixelsPerMm,
         undefined,
         "FAST"
       );
-    } else {
-      const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
-      let sourceY = 0;
-      let pageIndex = 0;
-
-      while (sourceY < canvas.height) {
-        const currentHeight = Math.min(
-          pageHeightPx,
-          canvas.height - sourceY
-        );
-
-        const pageCanvas = createCanvasSlice(
-          canvas,
-          sourceY,
-          currentHeight
-        );
-
-        if (pageIndex > 0) {
-          pdf.addPage();
-        }
-
-        pdf.addImage(
-          pageCanvas,
-          "PNG",
-          PDF_MARGIN_MM,
-          PDF_MARGIN_MM,
-          usableWidth,
-          currentHeight / pixelsPerMm,
-          undefined,
-          "FAST"
-        );
-
-        sourceY += currentHeight;
-        pageIndex += 1;
-      }
+      sourceY += currentHeight;
+      pageIndex += 1;
     }
 
-    const safeFileName =
-      fileName
-        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
-        .trim() || "quotation";
-
-    pdf.save(
-      safeFileName.toLowerCase().endsWith(".pdf")
-        ? safeFileName
-        : `${safeFileName}.pdf`
-    );
+    const safeFileName = fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "-").trim() || "quotation";
+    pdf.save(safeFileName.toLowerCase().endsWith(".pdf") ? safeFileName : `${safeFileName}.pdf`);
   } finally {
     container.remove();
   }
