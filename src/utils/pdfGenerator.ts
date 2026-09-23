@@ -6,17 +6,11 @@ const A4_HEIGHT_MM = 297;
 const PDF_MARGIN_MM = 4;
 const RENDER_WIDTH_PX = 794;
 
-const COLOR_RE = /(?:oklch|oklab|color-mix|color)\(/i;
+const COLOR_FUNCTION_RE = /(?:oklch|oklab|color-mix|color)\(/i;
+const COLOR_FUNCTION_NAMES = ['oklch(', 'oklab(', 'color-mix(', 'color('];
 
-/**
- * IMPORTANT:
- * html2canvas requires the target element to be a real element in the
- * current document. Do not pass a detached clone or an iframe element.
- * This helper creates a real, off-screen render host and appends it to body.
- */
 function createRenderHost(html: string): HTMLDivElement {
   const host = document.createElement('div');
-
   host.id = 'quotation-pdf-render-root';
   host.innerHTML = html;
 
@@ -38,12 +32,12 @@ function createRenderHost(html: string): HTMLDivElement {
     boxSizing: 'border-box',
   });
 
-  document.body.prepend(host);
+  document.body.appendChild(host);
   return host;
 }
 
 function resolveColor(value: string): string | null {
-  if (!COLOR_RE.test(value)) return value;
+  if (!COLOR_FUNCTION_RE.test(value)) return value;
 
   const probe = document.createElement('span');
   Object.assign(probe.style, {
@@ -55,67 +49,43 @@ function resolveColor(value: string): string | null {
     visibility: 'hidden',
     pointerEvents: 'none',
   });
-
   document.body.appendChild(probe);
 
   try {
     probe.style.color = '';
     probe.style.color = value;
     const result = getComputedStyle(probe).color;
-    return result && !COLOR_RE.test(result) ? result : null;
+    return result && !COLOR_FUNCTION_RE.test(result) ? result : null;
   } finally {
     probe.remove();
   }
 }
 
-function sanitizeSvg(root: HTMLElement): void {
-  root.querySelectorAll<SVGElement>('svg').forEach((svg) => {
-    const elements = [svg, ...Array.from(svg.querySelectorAll<SVGElement>('*'))];
-
-    elements.forEach((element) => {
-      ['fill', 'stroke', 'color', 'stop-color', 'flood-color', 'lighting-color'].forEach((attribute) => {
-        const value = element.getAttribute(attribute);
-        if (!value || !COLOR_RE.test(value)) return;
-        const resolved = resolveColor(value);
-        if (resolved) element.setAttribute(attribute, resolved);
-      });
-
-      const style = element.getAttribute('style');
-      if (style && COLOR_RE.test(style)) {
-        element.setAttribute('style', replaceCssColors(style));
-      }
-    });
-  });
-}
-
 function replaceCssColors(value: string): string {
-  // Resolve function tokens through the browser rather than inventing RGB values.
-  // A small parser is used so nested color-mix() functions are handled safely.
   let output = '';
-  let i = 0;
+  let cursor = 0;
 
-  while (i < value.length) {
-    const lower = value.slice(i).toLowerCase();
-    const names = ['oklch(', 'oklab(', 'color-mix(', 'color('];
-    const found = names
+  while (cursor < value.length) {
+    const lower = value.slice(cursor).toLowerCase();
+    const matches = COLOR_FUNCTION_NAMES
       .map((name) => ({ name, index: lower.indexOf(name) }))
       .filter((item) => item.index >= 0)
-      .sort((a, b) => a.index - b.index)[0];
+      .sort((a, b) => a.index - b.index);
 
-    if (!found) {
-      output += value.slice(i);
+    if (!matches.length) {
+      output += value.slice(cursor);
       break;
     }
 
-    const start = i + found.index;
-    output += value.slice(i, start);
+    const start = cursor + matches[0].index;
+    output += value.slice(cursor, start);
 
     let depth = 0;
     let end = start;
-    for (; end < value.length; end++) {
-      const ch = value[end];
-      if (ch === '(') depth += 1;
-      else if (ch === ')') {
+    for (; end < value.length; end += 1) {
+      const char = value[end];
+      if (char === '(') depth += 1;
+      if (char === ')') {
         depth -= 1;
         if (depth === 0) {
           end += 1;
@@ -125,78 +95,97 @@ function replaceCssColors(value: string): string {
     }
 
     const token = value.slice(start, end);
-    const resolved = resolveColor(token);
-    output += resolved || '#000000';
-    i = end;
+    output += resolveColor(token) || '#000000';
+    cursor = end;
   }
 
   return output;
 }
 
-/**
- * Copy browser-computed presentation into inline styles on the cloned PDF
- * document. Once this is done, Tailwind's stylesheet can be removed from the
- * clone, preventing html2canvas from parsing Tailwind v4 oklch declarations.
- */
+function sanitizeSvg(root: HTMLElement): void {
+  root.querySelectorAll<SVGElement>('svg').forEach((svg) => {
+    const nodes = [svg, ...Array.from(svg.querySelectorAll<SVGElement>('*'))];
+
+    nodes.forEach((node) => {
+      ['fill', 'stroke', 'color', 'stop-color', 'flood-color', 'lighting-color'].forEach((attribute) => {
+        const value = node.getAttribute(attribute);
+        if (!value || !COLOR_FUNCTION_RE.test(value)) return;
+        const resolved = resolveColor(value);
+        if (resolved) node.setAttribute(attribute, resolved);
+      });
+
+      const style = node.getAttribute('style');
+      if (style && COLOR_FUNCTION_RE.test(style)) {
+        node.setAttribute('style', replaceCssColors(style));
+      }
+    });
+  });
+}
+
 function inlineComputedStyles(root: HTMLElement): void {
   const elements = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))];
 
   elements.forEach((element) => {
     const computed = getComputedStyle(element);
-    const inline = element.style;
 
-    for (let i = 0; i < computed.length; i += 1) {
-      const property = computed.item(i);
+    for (let index = 0; index < computed.length; index += 1) {
+      const property = computed.item(index);
       if (!property) continue;
 
       let value = computed.getPropertyValue(property);
       if (!value) continue;
 
-      if (COLOR_RE.test(value)) {
+      if (COLOR_FUNCTION_RE.test(value)) {
         const resolved = resolveColor(value);
         if (resolved) value = resolved;
-        else continue;
       }
 
       try {
-        inline.setProperty(property, value);
+        element.style.setProperty(property, value);
       } catch {
-        // Ignore a browser-only computed property that cannot be written inline.
+        // Ignore browser-only read-only computed properties.
       }
     }
 
-    // Also sanitize any existing inline declaration.
+    // Do not allow the PDF renderer to inherit the application's responsive
+    // mobile typography or transformed preview state.
+    if (element === root) {
+      element.style.setProperty('font-family', 'Inter, Arial, Helvetica, sans-serif');
+      element.style.setProperty('font-size', '16px');
+      element.style.setProperty('line-height', 'normal');
+      element.style.setProperty('letter-spacing', 'normal');
+      element.style.setProperty('word-spacing', 'normal');
+      element.style.setProperty('transform', 'none');
+    }
+
     const inlineCss = element.getAttribute('style');
-    if (inlineCss && COLOR_RE.test(inlineCss)) {
+    if (inlineCss && COLOR_FUNCTION_RE.test(inlineCss)) {
       element.setAttribute('style', replaceCssColors(inlineCss));
     }
   });
 }
 
-function removeStylesheetsFromClone(clonedDocument: Document): void {
-  // At this point every visual property has been copied inline.
-  // Removing stylesheets prevents html2canvas's CSS parser from seeing oklch.
-  clonedDocument.querySelectorAll('style, link[rel="stylesheet"]').forEach((node) => {
-    node.remove();
-  });
+function removeStylesheetsFromClone(documentClone: Document): void {
+  documentClone
+    .querySelectorAll('style, link[rel="stylesheet"]')
+    .forEach((node) => node.remove());
 }
 
-function prepareClone(clonedDocument: Document): void {
-  const root = clonedDocument.getElementById('quotation-pdf-render-root');
+function prepareClone(documentClone: Document): void {
+  const root = documentClone.getElementById('quotation-pdf-render-root') as HTMLElement | null;
   if (!root) return;
 
-  const htmlRoot = root as HTMLElement;
-  htmlRoot.style.setProperty('width', `${RENDER_WIDTH_PX}px`, 'important');
-  htmlRoot.style.setProperty('max-width', `${RENDER_WIDTH_PX}px`, 'important');
-  htmlRoot.style.setProperty('min-width', `${RENDER_WIDTH_PX}px`, 'important');
-  htmlRoot.style.setProperty('margin', '0', 'important');
-  htmlRoot.style.setProperty('padding', '0', 'important');
-  htmlRoot.style.setProperty('background', '#ffffff', 'important');
-  htmlRoot.style.setProperty('visibility', 'visible', 'important');
-  htmlRoot.style.setProperty('opacity', '1', 'important');
-  htmlRoot.style.setProperty('transform', 'none', 'important');
+  root.style.setProperty('width', `${RENDER_WIDTH_PX}px`, 'important');
+  root.style.setProperty('max-width', `${RENDER_WIDTH_PX}px`, 'important');
+  root.style.setProperty('min-width', `${RENDER_WIDTH_PX}px`, 'important');
+  root.style.setProperty('margin', '0', 'important');
+  root.style.setProperty('padding', '0', 'important');
+  root.style.setProperty('background', '#ffffff', 'important');
+  root.style.setProperty('visibility', 'visible', 'important');
+  root.style.setProperty('opacity', '1', 'important');
+  root.style.setProperty('transform', 'none', 'important');
 
-  const template = htmlRoot.querySelector<HTMLElement>('.quotation-template');
+  const template = root.querySelector<HTMLElement>('.quotation-template');
   if (template) {
     template.style.setProperty('width', '100%', 'important');
     template.style.setProperty('max-width', '100%', 'important');
@@ -205,67 +194,61 @@ function prepareClone(clonedDocument: Document): void {
     template.style.setProperty('transform', 'none', 'important');
   }
 
-  // The clone is already rendered by the browser. Freeze those computed styles
-  // before removing Tailwind/application stylesheets.
-  inlineComputedStyles(htmlRoot);
-  sanitizeSvg(htmlRoot);
-  removeStylesheetsFromClone(clonedDocument);
+  inlineComputedStyles(root);
+  sanitizeSvg(root);
+  removeStylesheetsFromClone(documentClone);
 
-  // Restore only the few PDF-root guarantees needed after stylesheet removal.
-  htmlRoot.style.setProperty('width', `${RENDER_WIDTH_PX}px`, 'important');
-  htmlRoot.style.setProperty('background', '#ffffff', 'important');
+  root.style.setProperty('width', `${RENDER_WIDTH_PX}px`, 'important');
+  root.style.setProperty('background', '#ffffff', 'important');
 }
 
 function waitForImages(root: HTMLElement): Promise<void> {
   const images = Array.from(root.querySelectorAll('img'));
 
   return Promise.all(
-    images.map((image) =>
-      new Promise<void>((resolve) => {
-        if (image.complete) {
-          resolve();
-          return;
-        }
+    images.map(
+      (image) =>
+        new Promise<void>((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
 
-        const finish = () => resolve();
-        image.addEventListener('load', finish, { once: true });
-        image.addEventListener('error', finish, { once: true });
-        window.setTimeout(finish, 10000);
-      })
+          const finish = () => resolve();
+          image.addEventListener('load', finish, { once: true });
+          image.addEventListener('error', finish, { once: true });
+          window.setTimeout(finish, 10000);
+        })
     )
   ).then(() => undefined);
 }
 
 function trimTrailingBlankRows(canvas: HTMLCanvasElement): HTMLCanvasElement {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return canvas;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return canvas;
 
-  const sampleStep = Math.max(1, Math.floor(canvas.width / 500));
-  const rowHeight = 1;
+  const step = Math.max(1, Math.floor(canvas.width / 500));
   let lastContentRow = canvas.height - 1;
 
-  for (let y = canvas.height - 1; y >= 0; y -= rowHeight) {
-    let hasContent = false;
+  for (let y = canvas.height - 1; y >= 0; y -= 1) {
+    let content = false;
 
-    for (let x = 0; x < canvas.width; x += sampleStep) {
-      const pixel = ctx.getImageData(x, y, 1, 1).data;
-      const isNotWhite = pixel[3] > 5 && (pixel[0] < 248 || pixel[1] < 248 || pixel[2] < 248);
-      if (isNotWhite) {
-        hasContent = true;
+    for (let x = 0; x < canvas.width; x += step) {
+      const pixel = context.getImageData(x, y, 1, 1).data;
+      if (pixel[3] > 5 && (pixel[0] < 248 || pixel[1] < 248 || pixel[2] < 248)) {
+        content = true;
         break;
       }
     }
 
-    if (hasContent) {
+    if (content) {
       lastContentRow = y;
       break;
     }
   }
 
-  // Keep a tiny amount of bottom breathing room, but never enough to create a
-  // second blank A4 page.
-  const keepRows = Math.min(24, Math.floor(canvas.height * 0.01));
-  const targetHeight = Math.min(canvas.height, lastContentRow + keepRows + 1);
+  const bottomPadding = Math.min(20, Math.floor(canvas.height * 0.008));
+  const targetHeight = Math.min(canvas.height, lastContentRow + bottomPadding + 1);
 
   if (targetHeight >= canvas.height - 4) return canvas;
 
@@ -273,12 +256,12 @@ function trimTrailingBlankRows(canvas: HTMLCanvasElement): HTMLCanvasElement {
   trimmed.width = canvas.width;
   trimmed.height = targetHeight;
 
-  const tctx = trimmed.getContext('2d');
-  if (!tctx) return canvas;
+  const trimmedContext = trimmed.getContext('2d');
+  if (!trimmedContext) return canvas;
 
-  tctx.fillStyle = '#ffffff';
-  tctx.fillRect(0, 0, trimmed.width, trimmed.height);
-  tctx.drawImage(canvas, 0, 0, canvas.width, targetHeight, 0, 0, trimmed.width, trimmed.height);
+  trimmedContext.fillStyle = '#ffffff';
+  trimmedContext.fillRect(0, 0, trimmed.width, trimmed.height);
+  trimmedContext.drawImage(canvas, 0, 0, canvas.width, targetHeight, 0, 0, trimmed.width, trimmed.height);
 
   return trimmed;
 }
@@ -288,23 +271,117 @@ function sliceCanvas(source: HTMLCanvasElement, sourceY: number, height: number)
   slice.width = source.width;
   slice.height = height;
 
-  const ctx = slice.getContext('2d');
-  if (!ctx) throw new Error('Unable to create PDF page canvas.');
+  const context = slice.getContext('2d');
+  if (!context) throw new Error('Unable to create PDF page canvas.');
 
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, slice.width, slice.height);
-  ctx.drawImage(source, 0, sourceY, source.width, height, 0, 0, source.width, height);
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, slice.width, slice.height);
+  context.drawImage(source, 0, sourceY, source.width, height, 0, 0, source.width, height);
   return slice;
 }
 
-export async function generateQuotationPdf(html: string, fileName = 'quotation.pdf'): Promise<void> {
+/**
+ * Build page boundaries from the real quotation sections.
+ * A section is moved to the next page when it would otherwise be cut by the
+ * A4 boundary. This prevents payment/terms/signature cards from being sliced.
+ */
+function getSectionAwarePageRanges(
+  host: HTMLElement,
+  canvas: HTMLCanvasElement,
+  pageHeightPx: number
+): Array<{ start: number; end: number }> {
+  const template = host.querySelector<HTMLElement>('.quotation-template');
+  if (!template) {
+    return [{ start: 0, end: canvas.height }];
+  }
+
+  const hostRect = host.getBoundingClientRect();
+  const templateRect = template.getBoundingClientRect();
+  const scale = canvas.width / Math.max(1, hostRect.width);
+  const templateTop = templateRect.top - hostRect.top;
+  const sections = Array.from(template.children) as HTMLElement[];
+
+  const boundaries = sections
+    .map((section) => {
+      const rect = section.getBoundingClientRect();
+      return {
+        start: Math.max(0, Math.round((rect.top - hostRect.top) * scale)),
+        end: Math.min(canvas.height, Math.round((rect.bottom - hostRect.top) * scale)),
+      };
+    })
+    .filter((section) => section.end > section.start && section.end > templateTop * scale)
+    .sort((a, b) => a.start - b.start);
+
+  if (!boundaries.length) {
+    return [{ start: 0, end: canvas.height }];
+  }
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  let pageStart = 0;
+  let sectionIndex = 0;
+
+  while (pageStart < canvas.height && sectionIndex < boundaries.length) {
+    const pageLimit = Math.min(canvas.height, pageStart + pageHeightPx);
+    let pageEnd = pageLimit;
+    let moved = false;
+
+    for (let index = sectionIndex; index < boundaries.length; index += 1) {
+      const section = boundaries[index];
+
+      if (section.end <= pageStart) {
+        sectionIndex = index + 1;
+        continue;
+      }
+
+      if (section.end <= pageLimit) {
+        sectionIndex = index + 1;
+        continue;
+      }
+
+      // This section crosses the A4 boundary. Move it as a whole when there
+      // is already content on the current page.
+      if (section.start > pageStart + 4) {
+        pageEnd = section.start;
+        moved = true;
+      }
+      break;
+    }
+
+    if (pageEnd <= pageStart) {
+      pageEnd = pageLimit;
+    }
+
+    ranges.push({ start: pageStart, end: Math.min(pageEnd, canvas.height) });
+    pageStart = Math.min(pageEnd, canvas.height);
+
+    if (!moved && pageStart < canvas.height) {
+      // The section itself is taller than a page; allow it to split rather
+      // than looping forever.
+      pageStart = pageLimit;
+      while (
+        sectionIndex < boundaries.length &&
+        boundaries[sectionIndex].end <= pageStart
+      ) {
+        sectionIndex += 1;
+      }
+    }
+  }
+
+  if (pageStart < canvas.height) {
+    ranges.push({ start: pageStart, end: canvas.height });
+  }
+
+  return ranges.filter((range) => range.end - range.start > 4);
+}
+
+export async function generateQuotationPdf(
+  html: string,
+  fileName = 'quotation.pdf'
+): Promise<void> {
   if (!html || !html.trim()) {
     throw new Error('Quotation HTML is empty.');
   }
 
-  // Never render a detached HTML string. html2canvas explicitly requires the
-  // target to exist in the current document; otherwise it can throw
-  // "Unable to find element in cloned iframe".
   const host = createRenderHost(html);
 
   try {
@@ -320,7 +397,7 @@ export async function generateQuotationPdf(html: string, fileName = 'quotation.p
     }
 
     const canvas = await html2canvas(host, {
-      scale: 2,
+      scale: 3,
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#ffffff',
@@ -331,6 +408,7 @@ export async function generateQuotationPdf(html: string, fileName = 'quotation.p
       scrollX: 0,
       scrollY: 0,
       removeContainer: true,
+      foreignObjectRendering: false,
       onclone: prepareClone,
     });
 
@@ -339,7 +417,6 @@ export async function generateQuotationPdf(html: string, fileName = 'quotation.p
     }
 
     const finalCanvas = trimTrailingBlankRows(canvas);
-
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -350,16 +427,17 @@ export async function generateQuotationPdf(html: string, fileName = 'quotation.p
     const usableWidth = A4_WIDTH_MM - PDF_MARGIN_MM * 2;
     const usableHeight = A4_HEIGHT_MM - PDF_MARGIN_MM * 2;
     const pixelsPerMm = finalCanvas.width / usableWidth;
-    const pageHeightPx = Math.max(1, Math.floor(usableHeight * pixelsPerMm));
+    const pageHeightPx = Math.floor(usableHeight * pixelsPerMm);
+    const ranges = getSectionAwarePageRanges(host, finalCanvas, pageHeightPx);
 
-    let sourceY = 0;
-    let pageIndex = 0;
+    ranges.forEach((range, index) => {
+      if (index > 0) pdf.addPage();
 
-    while (sourceY < finalCanvas.height) {
-      const currentHeight = Math.min(pageHeightPx, finalCanvas.height - sourceY);
-      const pageCanvas = sliceCanvas(finalCanvas, sourceY, currentHeight);
-
-      if (pageIndex > 0) pdf.addPage();
+      const pageCanvas = sliceCanvas(
+        finalCanvas,
+        range.start,
+        range.end - range.start
+      );
 
       pdf.addImage(
         pageCanvas,
@@ -367,19 +445,20 @@ export async function generateQuotationPdf(html: string, fileName = 'quotation.p
         PDF_MARGIN_MM,
         PDF_MARGIN_MM,
         usableWidth,
-        currentHeight / pixelsPerMm,
+        (range.end - range.start) / pixelsPerMm,
         undefined,
         'FAST'
       );
-
-      sourceY += currentHeight;
-      pageIndex += 1;
-    }
+    });
 
     const safeFileName =
       fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').trim() || 'quotation';
 
-    pdf.save(safeFileName.toLowerCase().endsWith('.pdf') ? safeFileName : `${safeFileName}.pdf`);
+    pdf.save(
+      safeFileName.toLowerCase().endsWith('.pdf')
+        ? safeFileName
+        : `${safeFileName}.pdf`
+    );
   } finally {
     host.remove();
   }
